@@ -1,0 +1,8 @@
+project_id = "fqjvbzozrqsqyqagmvtv"
+
+# Los webhooks los llama Meta / Supabase sin JWT de usuario; se autentican con firma o secreto propio.
+[functions.whatsapp-webhook]
+verify_jwt = false
+
+[functions.notificar-listo]
+verify_jwt = false

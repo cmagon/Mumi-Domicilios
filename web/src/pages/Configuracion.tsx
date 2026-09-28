@@ -29,7 +29,7 @@ export default function Configuracion() {
 
   const set = (k: string, v: string) => setF({ ...f, [k]: v })
   const guardarTodo = async () => {
-    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'proveedor_ia', 'logo_url'])
+    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'proveedor_ia', 'logo_url'])
       if ((f[k] ?? '') !== (cfg[k] ?? '')) await save(k, f[k] ?? '')
     setMsg('Guardado'); loadH()
   }
@@ -71,6 +71,7 @@ export default function Configuracion() {
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />
         <label>Franjas horarias de entrega (separadas por coma)</label><input value={f.franjas_entrega ?? ''} onChange={(e) => set('franjas_entrega', e.target.value)} />
         <label>Números admin autorizados (WhatsApp, separados por coma)</label><input value={f.admin_numeros ?? ''} onChange={(e) => set('admin_numeros', e.target.value)} />
+        <label>Número del domiciliario (WhatsApp, con indicativo, ej. 573001234567)</label><input value={f.domiciliario_numero ?? ''} onChange={(e) => set('domiciliario_numero', e.target.value)} />
         <label>Logo del micrositio</label>{f.logo_url && <img className="thumb" src={f.logo_url} alt="logo" />}
         <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && logo(e.target.files[0])} />
       </div>

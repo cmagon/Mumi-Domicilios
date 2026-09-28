@@ -7,6 +7,7 @@ import { imprimirTickets } from '../ticket'
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [filtro, setFiltro] = useState('activos')
+  const [msg, setMsg] = useState('')
   const [comp, setComp] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
@@ -43,6 +44,7 @@ export default function Pedidos() {
 
   return (
     <>
+      {msg && <p className="muted">{msg}</p>}
       <div className="card"><select value={filtro} onChange={(e) => setFiltro(e.target.value)}>
         <option value="activos">Activos</option><option value="todos">Todos</option></select></div>
       {lista.map((o) => (
@@ -63,7 +65,8 @@ export default function Pedidos() {
               {ESTADOS.map((e) => <option key={e}>{e}</option>)}</select>
             {o.estado === 'recibido' && o.metodo_pago?.toLowerCase().includes('nequi') &&
               <button className="sm" onClick={() => cambiar(o.id, 'pago_verificado')}>Aprobar pago</button>}
-            <button className="sec sm" onClick={() => imprimirTickets([o])}>Reimprimir</button></div>
+            <button className="sec sm" onClick={async () => { await supabase.from('pedidos').update({ reimprimir: true }).eq('id', o.id); setMsg(`Reimpresión de #${o.numero} enviada a la impresora`) }}>Reimprimir</button>
+            <button className="sec sm" onClick={() => imprimirTickets([o])}>Imprimir (navegador)</button></div>
         </div>))}
     </>
   )

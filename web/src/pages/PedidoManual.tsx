@@ -32,12 +32,9 @@ export default function PedidoManual() {
     const { error: e2 } = await supabase.from('pedido_items').insert(
       validos.map((i) => ({ ...i, pedido_id: ped.id, precio_unitario: precio(i.producto_id) })))
     if (e2) return setMsg(e2.message)
-    // Descuenta del excedente del día de entrega, sin bajar de 0
-    for (const i of validos) {
-      const { data: s } = await supabase.from('stock_dia').select('*').eq('fecha', f.fecha).eq('producto_id', i.producto_id).maybeSingle()
-      if (s) await supabase.from('stock_dia').update({ cantidad_agendada: s.cantidad_agendada + i.cantidad }).eq('id', s.id)
-      else await supabase.from('stock_dia').insert({ fecha: f.fecha, producto_id: i.producto_id, cantidad_agendada: i.cantidad })
-    }
+    // Reserva stock del día de entrega (forzado: los pedidos manuales pueden exceder el excedente)
+    for (const i of validos)
+      await supabase.rpc('reservar_stock', { p_fecha: f.fecha, p_producto: i.producto_id, p_cantidad: i.cantidad, p_forzar: true })
     setMsg('Pedido creado'); setItems([{ producto_id: '', cantidad: 1 }]); setF({ ...f, nombre: '', tel: '', nota: '', direccion: '' })
   }
 
