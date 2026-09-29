@@ -37,3 +37,7 @@ set -a; . ./.env; set +a; npm start
 - Con impresora WiFi ESC/POS: `PRINTER_DRIVER=tcp`, `PRINTER_HOST=<IP fija>`, `PRINTER_COLS=32` (58 mm) o `48` (80 mm).
 - Imprime al pasar a `pago_verificado`/`pendiente_cobro`; los agendados esperan a su fecha de entrega. Si la impresión falla, el pedido vuelve a la cola.
 - El botón "Reimprimir" del micrositio marca `reimprimir=true` y el agente lo atiende.
+
+## Despliegue web (sin CLI)
+- Las Edge Functions se despliegan solas desde GitHub Actions (`.github/workflows/deploy-functions.yml`) al hacer merge en `main`. Requiere el secret de GitHub `SUPABASE_ACCESS_TOKEN` (Supabase → Account → Access Tokens).
+- Los secrets del bot se cargan en Supabase → Edge Functions → Secrets. Plantillas de WhatsApp: `docs/whatsapp-plantillas.md`.

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import type { Tool, Provider } from './ai.ts'
 import { leerComprobante } from './ai.ts'
-import { sendImage, sendText } from './wa.ts'
+import { notify, sendImage } from './wa.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -98,7 +98,12 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       await sb.from('conversaciones').upsert({ telefono: ctx.telefono, humano: true, actualizado_en: new Date().toISOString() })
       ctx.humano = true
       for (const n of (cfg.admin_numeros ?? '').split(',').map((s) => s.replace(/\D/g, '')).filter(Boolean))
-        await sendText(n, `⚠️ Atención humana requerida\nCliente: ${ctx.telefono}\n${a.resumen}\n\nEscríbele desde tu WhatsApp. Para reactivar el bot: reanudar ${ctx.telefono}`)
+        await notify(n, { templateEnv: 'WA_TEMPLATE_ADMIN', params: [ctx.telefono, a.resumen],
+          text: `⚠️ Atención humana requerida
+Cliente: ${ctx.telefono}
+${a.resumen}
+
+Escríbele desde tu WhatsApp. Para reactivar el bot: reanudar ${ctx.telefono}` })
       return { ok: true, instruccion: 'Avisa al cliente que en un momento le escribe alguien del equipo. No sigas respondiendo.' }
     }
   }
