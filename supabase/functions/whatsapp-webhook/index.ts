@@ -68,7 +68,8 @@ async function manejar(msg: any) {
   const domi = digits(cfg.domiciliario_numero ?? '')
 
   // Respuestas de botones del domiciliario
-  if (msg.type === 'interactive' && from === domi) return botonDomiciliario(msg.interactive?.button_reply?.id ?? '', from)
+  if (from === domi && (msg.type === 'interactive' || msg.type === 'button'))
+    return botonDomiciliario(msg.interactive?.button_reply?.id ?? msg.button?.payload ?? '', from)
 
   // Dedupe por id de mensaje de WhatsApp
   const { error: dup } = await sb.from('mensajes').insert({ wa_id: msg.id, telefono: from, rol: 'user', contenido: '…' })

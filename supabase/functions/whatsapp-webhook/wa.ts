@@ -18,6 +18,21 @@ export const sendButtons = (to: string, body: string, buttons: { id: string; tit
   post({ to, type: 'interactive', interactive: { type: 'button', body: { text: body },
     action: { buttons: buttons.map((b) => ({ type: 'reply', reply: b })) } } })
 
+// Plantilla aprobada por Meta (necesaria fuera de la ventana de 24 h). Los botones de respuesta rápida llevan un payload por envío.
+export const sendTemplate = (to: string, name: string, params: string[], buttonPayloads: string[] = []) =>
+  post({ to, type: 'template', template: { name, language: { code: 'es' }, components: [
+    { type: 'body', parameters: params.map((text) => ({ type: 'text', text })) },
+    ...buttonPayloads.map((payload, index) => ({ type: 'button', sub_type: 'quick_reply', index: String(index), parameters: [{ type: 'payload', payload }] })),
+  ] } })
+
+// Usa la plantilla si su nombre está configurado (secret); si no, cae a mensaje normal (solo funciona dentro de 24 h).
+export async function notify(to: string, o: { templateEnv: string; params: string[]; buttonPayloads?: string[];
+  text: string; buttons?: { id: string; title: string }[] }) {
+  const tpl = Deno.env.get(o.templateEnv)
+  if (tpl) return sendTemplate(to, tpl, o.params, o.buttonPayloads)
+  return o.buttons ? sendButtons(to, o.text, o.buttons) : sendText(to, o.text)
+}
+
 export async function downloadMedia(id: string): Promise<{ bytes: Uint8Array; mime: string }> {
   const meta = await (await fetch(`https://graph.facebook.com/${V}/${id}`, { headers: { Authorization: `Bearer ${token()}` } })).json()
   const r = await fetch(meta.url, { headers: { Authorization: `Bearer ${token()}` } })
