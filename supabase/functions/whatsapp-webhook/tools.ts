@@ -21,6 +21,24 @@ export function proximaProduccion(desde: string, dias: string, incluirHoy: boole
   return null
 }
 
+const fechaLarga = (f: string) => new Date(f + 'T12:00:00Z').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).replace(',', '')
+const minutosAhora = () => { const p = new Date().toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).split(':'); return (+p[0] % 24) * 60 + +p[1] }
+// Fin de la última franja de entrega (ej. "14:00-16:00,16:00-18:00" → 18:00). Después de esa hora ya no hay entregas hoy.
+export function cierreEntregas(franjas: string): { min: number; texto: string } | null {
+  const fines = [...(franjas ?? '').matchAll(/-\s*(\d{1,2})(?::(\d{2}))?/g)].map((m) => +m[1] * 60 + (+m[2] || 0))
+  if (!fines.length) return null
+  const min = Math.max(...fines)
+  const h = Math.floor(min / 60), m = min % 60
+  return { min, texto: `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h >= 12 ? 'p. m.' : 'a. m.'}` }
+}
+// Primera fecha de entrega posible: hoy si es día de producción y aún hay horario; si no, la próxima producción.
+export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string) {
+  const cierre = cierreEntregas(franjas)
+  const hoyOk = esDiaProduccion(hoy, dias) && (!cierre || minutosAhora() < cierre.min)
+  return { fecha: hoyOk ? hoy : proximaProduccion(hoy, dias, false), cierre }
+}
+const manana = (hoy: string) => new Date(new Date(hoy + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
+
 export type Ctx = {
   sb: SupabaseClient; cfg: Record<string, string>; telefono: string; prov: Provider
   comprobantePath?: string | null; comprobanteOk?: boolean; referencia?: string | null; humano?: boolean
@@ -32,7 +50,7 @@ export const TOOLS: Tool[] = [
     parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean' } } } },
   { name: 'marcar_pendiente', description: 'Registra qué está esperando el bot del cliente (comprobante de pago, dirección, sabores/cantidad, confirmación del total). Si el cliente no responde, el sistema le enviará un recordatorio.',
     parameters: { type: 'object', properties: { que: { type: 'string', description: 'Qué falta, con detalle (ej. comprobante de $34.000 por Nequi)' } }, required: ['que'] } },
-  { name: 'consultar_stock', description: 'Stock disponible: cupo de hoy (solo si hoy es día de producción) y próximo día de producción.',
+  { name: 'consultar_stock', description: 'Disponibilidad para la próxima fecha de entrega (hoy si es día de producción y hay horario; si no, la siguiente producción): qué sabores hay, cuántas quedan de cada uno, cuáles están agotados y cómo decir la fecha. SIEMPRE úsala antes de ofrecer o confirmar sabores.',
     parameters: { type: 'object', properties: { fecha: { type: 'string', description: 'YYYY-MM-DD opcional' } } } },
   { name: 'consultar_tarifa_domicilio', description: 'Tarifas de domicilio activas.', parameters: { type: 'object', properties: {} } },
   { name: 'registrar_agotado', description: 'Registra que el cliente pidió un sabor sin cupo (demanda insatisfecha).',
@@ -67,15 +85,28 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     }
     case 'consultar_stock': {
       const hoy = fechaBogota()
-      const fecha = a.fecha ?? hoy
-      const { data } = await sb.from('stock_dia').select('cantidad_excedente,productos(nombre)').eq('fecha', fecha)
-      const proxima = proximaProduccion(hoy, dias, false)
+      const sug = fechaEntregaSugerida(hoy, dias, cfg.franjas_entrega ?? '')
+      const fecha: string | null = a.fecha ?? sug.fecha
+      if (!fecha) return { error: 'No hay días de producción configurados' }
+      const etiqueta = (f: string) => f === hoy ? `hoy${sug.cierre ? ` (entregas hasta las ${sug.cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
+      const [{ data: prods }, { data: filas }] = await Promise.all([
+        sb.from('productos').select('id,nombre').eq('activo', true).order('nombre'),
+        sb.from('stock_dia').select('producto_id,cantidad_excedente').eq('fecha', fecha),
+      ])
+      const porId = new Map((filas ?? []).map((r: any) => [r.producto_id, r.cantidad_excedente as number]))
+      // Con fila: cantidad exacta. Sin fila en una fecha futura: cupo aún no definido (se puede agendar). Sin fila hoy: no cargado = 0.
+      const sabores = (prods ?? []).map((p: any) => {
+        const tiene = porId.has(p.id)
+        const cantidad = tiene ? porId.get(p.id)! : (fecha === hoy ? 0 : null)
+        return { sabor: p.nombre, disponible: cantidad === null || cantidad > 0, cantidad_disponible: cantidad, cantidad_no_definida: cantidad === null }
+      })
+      const siguiente = proximaProduccion(fecha, dias, false)
       return {
-        hoy, dia_hoy: diaSemana(hoy), hoy_es_dia_de_produccion: esDiaProduccion(hoy, dias),
-        franjas_entrega: cfg.franjas_entrega, proximo_dia_produccion: proxima, dia_semana_proximo: proxima ? diaSemana(proxima) : null,
-        fecha_consultada: fecha,
-        cupo_libre: esDiaProduccion(fecha, dias) || fecha > hoy
-          ? (data ?? []).map((r: any) => ({ sabor: r.productos?.nombre, disponibles: r.cantidad_excedente })) : [],
+        hoy: `${diaSemana(hoy)} ${hoy}`, fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha), entrega_es_hoy: fecha === hoy,
+        franjas_entrega: cfg.franjas_entrega, sabores,
+        agotados_para_esa_fecha: sabores.filter((x) => !x.disponible).map((x) => x.sabor),
+        siguiente_fecha_para_agotados: siguiente ? { fecha: siguiente, cuando_decirlo: etiqueta(siguiente) } : null,
+        nota: 'Si cantidad_no_definida es true no inventes números: di que hay disponibilidad. Si te piden "cuántas quedan", da cantidad_disponible de cada sabor.',
       }
     }
     case 'consultar_tarifa_domicilio': {
@@ -130,6 +161,8 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const fecha: string = a.fecha_entrega
   if (fecha < hoy) return { ok: false, error: 'Fecha en el pasado' }
   if (!esDiaProduccion(fecha, cfg.dias_produccion ?? '')) return { ok: false, error: 'Esa fecha no es día de producción' }
+  const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
+  if (fecha === hoy && cierre && minutosAhora() >= cierre.min) return { ok: false, error: 'Ya pasó el horario de entregas de hoy; ofrece la próxima fecha de producción' }
 
   const items: { producto_id: string; cantidad: number; precio: number; nombre: string }[] = []
   for (const it of a.items) {
@@ -147,7 +180,9 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   }
   const reservados: typeof items = []
   for (const it of items) {
-    const { data: ok } = await sb.rpc('reservar_stock', { p_fecha: fecha, p_producto: it.producto_id, p_cantidad: it.cantidad })
+    // Fecha futura sin cupo cargado todavía: se agenda sin límite (queda como agendado y el admin define el excedente después)
+    const { data: fila } = await sb.from('stock_dia').select('id').eq('fecha', fecha).eq('producto_id', it.producto_id).maybeSingle()
+    const { data: ok } = await sb.rpc('reservar_stock', { p_fecha: fecha, p_producto: it.producto_id, p_cantidad: it.cantidad, p_forzar: fecha > hoy && !fila })
     if (!ok) {
       for (const r of reservados) await sb.rpc('liberar_stock', { p_fecha: fecha, p_producto: r.producto_id, p_cantidad: r.cantidad })
       await sb.from('demanda_insatisfecha').insert({ fecha, producto_id: it.producto_id, cantidad: it.cantidad, telefono: ctx.telefono })

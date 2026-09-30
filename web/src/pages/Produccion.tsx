@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { cop, hoy } from '../hooks'
 import type { Producto, Stock, Pedido } from '../types'
@@ -10,6 +10,8 @@ export default function Produccion() {
   const [stock, setStock] = useState<Record<string, Stock>>({})
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [exc, setExc] = useState<Record<string, string>>({})
+  const [enVivo, setEnVivo] = useState(false)
+  const editando = useRef<Set<string>>(new Set()) // campos que el admin está tocando: no se pisan con datos en vivo
 
   const load = useCallback(async () => {
     const [p, s, o] = await Promise.all([
@@ -20,13 +22,28 @@ export default function Produccion() {
     ])
     setProds(p.data ?? [])
     const m: Record<string, Stock> = {}; (s.data ?? []).forEach((r) => (m[r.producto_id] = r)); setStock(m)
-    setExc(Object.fromEntries((s.data ?? []).map((r) => [r.producto_id, String(r.cantidad_excedente)])))
+    setExc((prev) => {
+      const next: Record<string, string> = {}
+      ;(s.data ?? []).forEach((r) => { next[r.producto_id] = editando.current.has(r.producto_id) ? (prev[r.producto_id] ?? String(r.cantidad_excedente)) : String(r.cantidad_excedente) })
+      return next
+    })
     setPedidos((o.data ?? []) as unknown as Pedido[])
   }, [fecha])
   useEffect(() => { load() }, [load])
 
+  // Tiempo real: cada pedido del bot o ajuste de stock actualiza esta pantalla sin recargar
+  useEffect(() => {
+    const ch = supabase.channel('stock-vivo-' + fecha)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_dia' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => load())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pedido_items' }, () => load())
+      .subscribe((estado) => setEnVivo(estado === 'SUBSCRIBED'))
+    return () => { supabase.removeChannel(ch) }
+  }, [fecha, load])
+
   const guardar = async (pid: string) => {
     const cantidad_excedente = Math.max(0, parseInt(exc[pid] || '0', 10) || 0)
+    editando.current.delete(pid)
     const cur = stock[pid]
     if (cur) await supabase.from('stock_dia').update({ cantidad_excedente }).eq('id', cur.id)
     else await supabase.from('stock_dia').insert({ fecha, producto_id: pid, cantidad_excedente })
@@ -44,17 +61,19 @@ export default function Produccion() {
     <>
       <div className="card"><label>Fecha de producción</label>
         <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></div>
-      <div className="card"><h2>Stock y total a producir</h2>
-        <table><thead><tr><th>Sabor</th><th>Agendado</th><th>Excedente</th><th>Total disp.</th><th>A producir</th></tr></thead>
+      <div className="card"><h2>Stock en vivo {enVivo ? <span className="badge ok">● en vivo</span> : <span className="badge warn">sin conexión en vivo</span>}</h2>
+        <table><thead><tr><th>Sabor</th><th>Vendidas</th><th>Quedan</th><th>Total</th><th>A producir</th></tr></thead>
           <tbody>{prods.map((p) => {
             const s = stock[p.id]
+            const quedan = s?.cantidad_excedente ?? 0
             return (<tr key={p.id}><td>{p.nombre}</td><td>{s?.cantidad_agendada ?? 0}</td>
-              <td><div className="row"><input type="number" min={0} value={exc[p.id] ?? '0'}
-                onChange={(e) => setExc({ ...exc, [p.id]: e.target.value })} />
-                <button className="sm" onClick={() => guardar(p.id)}>OK</button></div></td>
-              <td>{(s?.cantidad_agendada ?? 0) + (s?.cantidad_excedente ?? 0)}</td><td><b>{porProducir(p.id)}</b></td></tr>)
+              <td><div className="row"><input type="number" min={0} value={exc[p.id] ?? '0'} style={quedan === 0 && s ? { borderColor: '#b00020' } : undefined}
+                onChange={(e) => { editando.current.add(p.id); setExc({ ...exc, [p.id]: e.target.value }) }} />
+                <button className="sm" onClick={() => guardar(p.id)}>OK</button></div>
+                {s && quedan === 0 && <span className="badge warn">agotado</span>}</td>
+              <td>{(s?.cantidad_agendada ?? 0) + quedan}</td><td><b>{porProducir(p.id)}</b></td></tr>)
           })}</tbody></table>
-        <p className="muted">Total disponible = agendado (fijo) + excedente (único campo editable).</p>
+        <p className="muted">Cada pedido del bot pasa unidades de "Quedan" a "Vendidas" al instante; el total no cambia. "Quedan" es lo único que editas (cupo libre para pedidos).</p>
       </div>
       <div className="card"><h2>Pedidos del día ({pedidos.length})</h2>
         <button onClick={imprimirTodos} disabled={!pedidos.length}>Imprimir todos los tickets</button>
