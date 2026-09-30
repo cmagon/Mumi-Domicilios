@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
   const ini = Number(cfg.horario_inicio || 7), fin = Number(cfg.horario_fin || 20)
   if (hora < ini || hora >= fin) return new Response('fuera de horario')
 
-  const esperas = [Number(cfg.seguimiento_1_min || 45), Number(cfg.seguimiento_2_min || 360)]
+  const esperas = [Number(cfg.seguimiento_1_min || 10), Number(cfg.seguimiento_2_min || 360)]
   const ventana = new Date(Date.now() - 23 * 3600 * 1000).toISOString()
   const { data: convs } = await sb.from('conversaciones').select('telefono,esperando,esperando_desde,seguimientos')
     .not('esperando', 'is', null).eq('humano', false).lt('seguimientos', 2).gte('ultimo_cliente_en', ventana)
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       const { data: hist } = await sb.from('mensajes').select('rol,contenido').eq('telefono', cv.telefono).order('creado_en', { ascending: false }).limit(12)
       const history = compactar((hist ?? []).reverse())
       history.push({ role: 'user', content: `[Sistema — este mensaje no lo escribió el cliente] El cliente lleva ${n === 0 ? 'un rato' : 'varias horas'} sin responder. ` +
-        `Pendiente: ${cv.esperando}. Escribe UN solo recordatorio breve, cálido y natural (máx. 2 frases), que retome lo pendiente sin presionar y sin repetir todo el resumen. ` +
+        `Pendiente: ${cv.esperando}. Retoma la conversación donde quedó con el objetivo de cerrar la venta: escribe UN solo mensaje breve, cálido y natural (máx. 2 frases) que recuerde lo último que hablaron y proponga el siguiente paso concreto, sin presionar, sin repetir todo el resumen y sin inventar urgencia ni descuentos. ` +
         (n === 1 ? 'Es el último recordatorio: sé aún más breve y deja la puerta abierta ("cuando quieras me avisas").' : '')})
       const texto = await chat(prov, `${cfg.system_prompt}\n\nNo uses herramientas ni marcadores; responde solo con el texto del recordatorio.`, history, [], async () => ({}))
       if (!texto) continue

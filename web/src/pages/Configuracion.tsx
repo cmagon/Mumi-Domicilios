@@ -103,7 +103,7 @@ export default function Configuracion() {
         <label>Recordatorios automáticos si el cliente no responde</label>
         <select value={f.seguimiento_activo ?? 'si'} onChange={(e) => set('seguimiento_activo', e.target.value)}><option value="si">Activados</option><option value="no">Desactivados</option></select>
         <div className="row">
-          <div><label>1.er recordatorio (minutos)</label><input type="number" min={5} value={f.seguimiento_1_min ?? '45'} onChange={(e) => set('seguimiento_1_min', e.target.value)} /></div>
+          <div><label>1.er recordatorio (minutos)</label><input type="number" min={5} value={f.seguimiento_1_min ?? '10'} onChange={(e) => set('seguimiento_1_min', e.target.value)} /></div>
           <div><label>2.º y último (minutos)</label><input type="number" min={5} value={f.seguimiento_2_min ?? '360'} onChange={(e) => set('seguimiento_2_min', e.target.value)} /></div></div>
         <div className="row">
           <div><label>Enviar desde (hora)</label><input type="number" min={0} max={23} value={f.horario_inicio ?? '7'} onChange={(e) => set('horario_inicio', e.target.value)} /></div>
