@@ -12,6 +12,10 @@ async function post(body: unknown) {
   if (!r.ok) console.error('WA send error', r.status, await r.text())
 }
 
+// Marca como leído y muestra "escribiendo…" (hasta 25 s o hasta que se envíe una respuesta)
+export const marcarLeido = (messageId: string) =>
+  post({ status: 'read', message_id: messageId, typing_indicator: { type: 'text' } }).catch(() => {})
+
 export const sendText = (to: string, body: string) => post({ to, type: 'text', text: { body } })
 export const sendImage = (to: string, link: string, caption?: string) => post({ to, type: 'image', image: { link, caption } })
 export const sendButtons = (to: string, body: string, buttons: { id: string; title: string }[]) =>

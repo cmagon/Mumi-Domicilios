@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { chat, modeloPorDefecto, transcribir, type Provider, type Turn } from './ai.ts'
-import { digits, downloadMedia, sendText, verifySignature } from './wa.ts'
+import { chat, transcribir, type Provider, type Turn } from './ai.ts'
+import { registrarAlerta } from './alerts.ts'
+import { apiKey, construirProveedor } from './config.ts'
+import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
@@ -11,13 +13,6 @@ const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 async function cargarConfig() {
   const { data } = await sb.from('config').select('clave,valor')
   return Object.fromEntries((data ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
-}
-
-async function proveedor(cfg: Record<string, string>): Promise<Provider> {
-  const { data } = await sb.from('config_secretos').select('valor').eq('clave', 'ia_api_key').maybeSingle()
-  if (!data) throw new Error('API key de IA no configurada')
-  const p = cfg.proveedor_ia === 'openai' ? 'openai' : 'claude'
-  return { proveedor: p, apiKey: data.valor, modelo: cfg.modelo_ia || modeloPorDefecto(p) }
 }
 
 async function comandoAdmin(from: string, texto: string, cfg: Record<string, string>): Promise<boolean> {
@@ -61,7 +56,9 @@ async function botonDomiciliario(id: string, from: string) {
   await sendText(from, accion === 'recogido' ? '📦 Marcado como recogido' : '✅ Marcado como entregado')
 }
 
-async function manejar(msg: any) {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+async function manejar(msg: any, nombreWA?: string) {
   const from: string = msg.from
   const cfg = await cargarConfig()
   const admins = (cfg.admin_numeros ?? '').split(',').map(digits).filter(Boolean)
@@ -75,26 +72,43 @@ async function manejar(msg: any) {
   const { error: dup } = await sb.from('mensajes').insert({ wa_id: msg.id, telefono: from, rol: 'user', contenido: '…' })
   if (dup) return
 
+  await marcarLeido(msg.id)
+
   let texto = ''
   let comprobantePath: string | null = null
   try {
     if (msg.type === 'text') texto = msg.text.body
     else if (msg.type === 'audio') {
-      const { bytes, mime } = await downloadMedia(msg.audio.id)
-      const sttKey = Deno.env.get('OPENAI_API_KEY') ?? (cfg.proveedor_ia === 'openai'
-        ? (await sb.from('config_secretos').select('valor').eq('clave', 'ia_api_key').maybeSingle()).data?.valor : null)
-      if (!sttKey) { await sendText(from, 'Por ahora no puedo escuchar audios, ¿me lo escribes? 🙏'); return }
-      texto = await transcribir(sttKey, bytes, mime)
+      const motor = cfg.motor_audio === 'openai' ? 'openai' : 'gemini'
+      const key = await apiKey(sb, cfg, motor)
+      if (!key) {
+        await registrarAlerta(sb, cfg, 'audio', `Falta la API key de ${motor} para transcribir audios`)
+        await sendText(from, 'Por ahora no puedo escuchar audios, ¿me lo escribes? 🙏'); return
+      }
+      try {
+        const { bytes, mime } = await downloadMedia(msg.audio.id)
+        texto = await transcribir(motor, key, bytes, mime, cfg.modelo_ia && cfg.proveedor_ia === 'gemini' ? cfg.modelo_ia : undefined)
+      } catch (e) {
+        await registrarAlerta(sb, cfg, 'audio', String(e))
+        await sendText(from, 'No pude escuchar tu audio, ¿me lo escribes? 🙏'); return
+      }
     } else if (msg.type === 'image') {
       const { bytes, mime } = await downloadMedia(msg.image.id)
       comprobantePath = `${from}/${msg.id}.${mime.includes('png') ? 'png' : 'jpg'}`
       await sb.storage.from('comprobantes').upload(comprobantePath, bytes, { contentType: mime })
       await sb.from('conversaciones').upsert({ telefono: from, ultimo_comprobante: comprobantePath, actualizado_en: new Date().toISOString() })
       texto = '[El cliente envió una imagen, posiblemente el comprobante de pago]' + (msg.image.caption ? ' ' + msg.image.caption : '')
-    } else { await sendText(from, 'Por ahora solo puedo leer texto, notas de voz e imágenes 🙂'); return }
+    } else if (msg.type === 'location') {
+      const l = msg.location ?? {}
+      texto = `[El cliente compartió su ubicación: ${[l.name, l.address].filter(Boolean).join(', ') || 'sin nombre'} (lat ${l.latitude}, lng ${l.longitude}). Úsala como dirección de entrega.]`
+    } else if (msg.type === 'sticker') texto = '[El cliente envió un sticker]'
+    else if (msg.type === 'reaction') { await sb.from('mensajes').delete().eq('wa_id', msg.id); return } // reacciones: sin respuesta
+    else { await sendText(from, 'Por ahora solo puedo leer texto, notas de voz, imágenes y ubicaciones 🙂'); return }
   } catch (e) { console.error('media', e); await sendText(from, 'No pude procesar ese archivo, ¿lo intentas de nuevo?'); return }
 
   await sb.from('mensajes').update({ contenido: texto }).eq('wa_id', msg.id)
+  // El cliente respondió: se cancela cualquier seguimiento pendiente
+  await sb.from('conversaciones').upsert({ telefono: from, esperando: null, esperando_desde: null, seguimientos: 0, ultimo_cliente_en: new Date().toISOString() }, { onConflict: 'telefono' })
 
   if (admins.includes(from) && (await comandoAdmin(from, texto, cfg))) return
   if (from === domi && (await comandoDomiciliario(from, texto))) return
@@ -108,23 +122,67 @@ async function manejar(msg: any) {
     await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', from)
   }
 
+  // Agrupa ráfagas: si el cliente sigue escribiendo, responde solo el último mensaje con todo el contexto
+  const espera = cfg.espera_agrupar_seg === '' || cfg.espera_agrupar_seg == null ? 4 : Math.max(0, Number(cfg.espera_agrupar_seg))
+  if (espera > 0) {
+    await sleep(espera * 1000)
+    const { data: ult } = await sb.from('mensajes').select('wa_id').eq('telefono', from).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+    if (ult && ult.wa_id !== msg.id) return
+    await marcarLeido(msg.id)
+  }
+
   const { data: hist } = await sb.from('mensajes').select('rol,contenido').eq('telefono', from).order('creado_en', { ascending: false }).limit(20)
   const history: Turn[] = (hist ?? []).reverse().map((m) => ({ role: m.rol, content: m.contenido }))
   while (history.length && history[0].role !== 'user') history.shift()
 
-  const prov = await proveedor(cfg)
+  let prov: Provider
+  try { prov = await construirProveedor(sb, cfg) }
+  catch (e) {
+    await registrarAlerta(sb, cfg, 'error', String(e))
+    await sendText(from, 'Dame un momento, en seguida te ayudo 🙏'); return
+  }
   const hoy = fechaBogota()
-  const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy} (hora de Colombia). ` +
-    `Días de producción: ${cfg.dias_produccion}. Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}.`
+  const hora = new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true })
+  const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
+    `Días de producción: ${cfg.dias_produccion}. Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
+    (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
+    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.')
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   let respuesta: string
   try { respuesta = await chat(prov, system, history, TOOLS, (n, a) => ejecutar(n, a, ctx)) }
-  catch (e) { console.error('ia', e); respuesta = 'Dame un momento, en seguida te ayudo 🙏'; }
+  catch (e) { console.error('ia', e); await registrarAlerta(sb, cfg, 'error', String(e)); respuesta = 'Dame un momento, en seguida te ayudo 🙏' }
   if (respuesta) {
-    await sendText(from, respuesta)
-    await sb.from('mensajes').insert({ telefono: from, rol: 'assistant', contenido: respuesta })
+    await enviarNatural(from, respuesta, ctx, msg.id, cfg)
+    // Seguimiento: si el bot dejó algo pendiente del cliente, se programa el recordatorio
+    if (ctx.pendiente && !ctx.humano) {
+      await sb.from('conversaciones').upsert({ telefono: from, esperando: ctx.pendiente, esperando_desde: new Date().toISOString(), seguimientos: 0 }, { onConflict: 'telefono' })
+    }
   }
+}
+
+// Envía la respuesta en varios mensajes cortos con "escribiendo…" y pausas; [[FOTOS]] marca dónde van las fotos del catálogo.
+async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: string, cfg: Record<string, string>) {
+  const simular = cfg.simular_escritura !== 'no'
+  const msPorCaracter = Number(cfg.velocidad_escritura_ms) > 0 ? Number(cfg.velocidad_escritura_ms) : 35
+  const partes = respuesta.replace(/\s*\[\[FOTOS\]\]\s*/g, '\n\n[[FOTOS]]\n\n').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+  while (partes.length > 6) { const x = partes.pop()!; partes[partes.length - 1] += '\n' + x }
+  const enviadas: string[] = []
+  let fotosEnviadas = false
+  const enviarFotos = async () => {
+    if (fotosEnviadas || !ctx.fotos?.length) return
+    fotosEnviadas = true
+    for (const f of ctx.fotos) { await sendImage(to, f.link, f.caption); if (simular) await sleep(700) }
+    enviadas.push('[Fotos del catálogo enviadas]')
+  }
+  for (const p of partes) {
+    if (p === '[[FOTOS]]') { await enviarFotos(); continue }
+    if (simular) { await marcarLeido(replyTo); await sleep(Math.min(Math.max(p.length * msPorCaracter, 1200), 5000)) }
+    await sendText(to, p)
+    enviadas.push(p)
+  }
+  await enviarFotos()
+  await sb.from('mensajes').insert({ telefono: to, rol: 'assistant', contenido: enviadas.join('\n\n') })
 }
 
 Deno.serve(async (req) => {
@@ -137,8 +195,9 @@ Deno.serve(async (req) => {
   const raw = await req.text()
   if (!(await verifySignature(raw, req.headers.get('x-hub-signature-256')))) return new Response('bad signature', { status: 401 })
   const body = JSON.parse(raw)
-  const msgs = (body.entry ?? []).flatMap((e: any) => (e.changes ?? []).flatMap((c: any) => c.value?.messages ?? []))
-  const work = Promise.all(msgs.map((m: any) => manejar(m).catch((e) => console.error('manejar', e))))
+  const items: { m: any; nombre?: string }[] = (body.entry ?? []).flatMap((e: any) => (e.changes ?? []).flatMap((c: any) =>
+    (c.value?.messages ?? []).map((m: any) => ({ m, nombre: (c.value?.contacts ?? []).find((k: any) => k.wa_id === m.from)?.profile?.name }))))
+  const work = Promise.all(items.map(({ m, nombre }) => manejar(m, nombre).catch((e) => console.error('manejar', e))))
   EdgeRuntime.waitUntil(work)
   return new Response('ok')
 })

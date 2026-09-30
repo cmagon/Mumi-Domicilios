@@ -12,6 +12,7 @@ import Configuracion from './pages/Configuracion'
 import PedidoManual from './pages/PedidoManual'
 import Kpis from './pages/Kpis'
 import Clientes from './pages/Clientes'
+import AlertaIA from './AlertaIA'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
 
@@ -58,6 +59,7 @@ export default function App() {
         <h1>Mumi Delivery</h1>
         <button className="sec sm" onClick={() => supabase.auth.signOut()}>Salir</button>
       </header>
+      <AlertaIA />
       <nav className="tabs">
         {tabs.map(([to, l]) => <NavLink key={to} to={to} end={to === '/'}>{l}</NavLink>)}
       </nav>
