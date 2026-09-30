@@ -64,6 +64,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 async function manejar(msg: any, nombreWA?: string) {
   const from: string = msg.from
+  console.log('mensaje recibido', from, msg.type)
   const cfg = await cargarConfig()
   const admins = (cfg.admin_numeros ?? '').split(',').map(digits).filter(Boolean)
   const domi = digits(cfg.domiciliario_numero ?? '')
@@ -74,7 +75,7 @@ async function manejar(msg: any, nombreWA?: string) {
 
   // Dedupe por id de mensaje de WhatsApp
   const { error: dup } = await sb.from('mensajes').insert({ wa_id: msg.id, telefono: from, rol: 'user', contenido: '…' })
-  if (dup) return
+  if (dup) { console.log('mensaje duplicado, se ignora', msg.id); return }
 
   await marcarLeido(msg.id)
 
@@ -131,7 +132,7 @@ async function manejar(msg: any, nombreWA?: string) {
     // El bot calla mientras atiende una persona, y se reactiva solo pasadas N horas (config: horas_humano)
     const horas = Number(cfg.horas_humano) > 0 ? Number(cfg.horas_humano) : 12
     const desde = conv.humano_desde ? new Date(conv.humano_desde).getTime() : 0
-    if (Date.now() - desde < horas * 3600 * 1000) return
+    if (Date.now() - desde < horas * 3600 * 1000) { console.log('chat en atención humana; el bot calla', from); return }
     await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', from)
   }
 
@@ -140,7 +141,7 @@ async function manejar(msg: any, nombreWA?: string) {
   if (espera > 0) {
     await sleep(espera * 1000)
     const { data: ult } = await sb.from('mensajes').select('wa_id').eq('telefono', from).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
-    if (ult && ult.wa_id !== msg.id) return
+    if (ult && ult.wa_id !== msg.id) { console.log('llegó otro mensaje del cliente; responde el último', from); return }
     await marcarLeido(msg.id)
   }
 
@@ -168,9 +169,22 @@ async function manejar(msg: any, nombreWA?: string) {
     : ''
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
-  let respuesta: string
-  try { respuesta = await chat(prov, system, history, TOOLS, (n, a) => ejecutar(n, a, ctx)) }
-  catch (e) { console.error('ia', e); await registrarAlerta(sb, cfg, 'error', String(e)); respuesta = 'Dame un momento, en seguida te ayudo 🙏' }
+  const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'
+  let respuesta = ''
+  try {
+    respuesta = (await chat(prov, system, history, TOOLS, (n, a) => ejecutar(n, a, ctx))).trim()
+    if (!respuesta.replace(/\[\[FOTOS\]\]/g, '').trim() && !ctx.fotos?.length && !ctx.humano) {
+      // El modelo a veces devuelve una respuesta vacía: se reintenta una vez pidiéndole que responda al cliente
+      console.warn('respuesta vacía del modelo; reintentando', from)
+      respuesta = (await chat(prov, system, [...history, { role: 'assistant', content: '…' }, { role: 'user', content: '[Sistema — no lo escribió el cliente] Responde ahora al último mensaje del cliente con un mensaje corto y natural.' }],
+        TOOLS, (n, a) => ejecutar(n, a, ctx))).trim()
+    }
+    if (!respuesta.replace(/\[\[FOTOS\]\]/g, '').trim() && !ctx.humano) {
+      await registrarAlerta(sb, cfg, 'error', 'El modelo devolvió una respuesta vacía (se envió un mensaje de espera al cliente)')
+      respuesta = FALLBACK
+    }
+  } catch (e) { console.error('ia', e); await registrarAlerta(sb, cfg, 'error', String(e)); respuesta = FALLBACK }
+  console.log('respuesta', from, JSON.stringify(respuesta.slice(0, 120)))
   if (respuesta) {
     await enviarNatural(from, respuesta, ctx, msg.id, cfg)
     // Seguimiento: si el bot dejó algo pendiente del cliente, se programa el recordatorio
@@ -221,7 +235,14 @@ Deno.serve(async (req) => {
   const body = JSON.parse(raw)
   const items: { m: any; nombre?: string }[] = (body.entry ?? []).flatMap((e: any) => (e.changes ?? []).flatMap((c: any) =>
     (c.value?.messages ?? []).map((m: any) => ({ m, nombre: (c.value?.contacts ?? []).find((k: any) => k.wa_id === m.from)?.profile?.name }))))
-  const work = Promise.all(items.map(({ m, nombre }) => manejar(m, nombre).catch((e) => console.error('manejar', e))))
+  const work = Promise.all(items.map(({ m, nombre }) => manejar(m, nombre).catch(async (e) => {
+    console.error('manejar', e)
+    try {
+      const { data: c } = await sb.from('config').select('clave,valor')
+      await registrarAlerta(sb, Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])), 'error', `Fallo procesando un mensaje: ${e}`)
+      if (m?.from) await sendText(m.from, 'Dame un momento, en seguida te ayudo 🙏')
+    } catch (e2) { console.error('manejar/aviso', e2) }
+  })))
   EdgeRuntime.waitUntil(work)
   return new Response('ok')
 })
