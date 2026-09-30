@@ -13,6 +13,7 @@ import PedidoManual from './pages/PedidoManual'
 import Kpis from './pages/Kpis'
 import Clientes from './pages/Clientes'
 import Avisos from './pages/Avisos'
+import Chats from './pages/Chats'
 import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
 
@@ -71,7 +72,7 @@ export default function App() {
   )
 
   const tabs: [string, string][] = [['/', 'Producción'], ['/avisos', noLeidos ? `Avisos 🔴${noLeidos}` : 'Avisos'], ['/pedidos', 'Pedidos'], ['/manual', 'Pedido manual'],
-    ['/clientes', 'Clientes'], ['/catalogo', 'Catálogo'], ['/tarifas', 'Tarifas'], ['/config', 'Configuración'], ['/kpis', 'KPIs']]
+    ['/chats', 'Chats'], ['/clientes', 'Clientes'], ['/catalogo', 'Catálogo'], ['/tarifas', 'Tarifas'], ['/config', 'Configuración'], ['/kpis', 'KPIs']]
   return (
     <ToastProvider>
       <header className="top">
@@ -87,6 +88,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Produccion />} />
           <Route path="/avisos" element={<Avisos />} />
+          <Route path="/chats" element={<Chats />} />
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/manual" element={<PedidoManual />} />
           <Route path="/catalogo" element={<Catalogo />} />

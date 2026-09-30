@@ -140,30 +140,36 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         : 'aún no se ha registrado el horneado de hoy'
       const proxima = proximaProduccion(hoy, dias, false)
       const pedida: string | undefined = a.fecha
-      const modoHoy = pedida ? pedida === hoy : puedeHoy
-      const fecha = pedida ?? (puedeHoy ? hoy : proxima)
+      let modoHoy = pedida ? pedida === hoy : puedeHoy
+      const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
+      // Si hoy ya no queda ningún extra, se pasa directo a agendar para la siguiente fecha de entrega
+      const hoySeAcaboTodo = !pedida && puedeHoy && extrasHoy === 0
+      if (hoySeAcaboTodo) modoHoy = false
+      const fecha = pedida ?? (modoHoy ? hoy : proxima)
       if (!fecha) return { error: 'No hay días de producción configurados' }
       const filas = fecha === hoy ? filasHoy : await resumen(fecha)
       const sabores = filas.filter((r) => r.activo).map((r) => {
         const cant = modoHoy ? Number(r.extras_dia) : Number(r.disponible_general)
         return { sabor: r.nombre as string, disponible: cant > 0, cantidad_disponible: cant }
       })
-      const agotados = sabores.filter((x) => !x.disponible).map((x) => x.sabor)
+      const faltantes = sabores.filter((x) => !x.disponible).map((x) => x.sabor)
       let agendables: unknown = null
       let sinStock: string[] = []
-      if (modoHoy && agotados.length && proxima) {
-        // Lo agotado hoy se puede agendar para la siguiente fecha si hay stock general
+      if (modoHoy && faltantes.length && proxima) {
+        // Lo que ya no queda hoy se puede agendar para la siguiente fecha si hay stock general
         const gen = await resumen(proxima)
-        const con = gen.filter((r) => agotados.includes(r.nombre) && Number(r.disponible_general) > 0)
+        const con = gen.filter((r) => faltantes.includes(r.nombre) && Number(r.disponible_general) > 0)
         agendables = { fecha: proxima, cuando_decirlo: etiqueta(proxima), sabores: con.map((r) => ({ sabor: r.nombre, cantidad_disponible: Number(r.disponible_general) })) }
-        sinStock = agotados.filter((n) => !con.some((r) => r.nombre === n))
-      } else if (!modoHoy) sinStock = agotados
+        sinStock = faltantes.filter((n) => !con.some((r) => r.nombre === n))
+      } else if (!modoHoy) sinStock = faltantes
       return {
         hoy: `${diaSemana(hoy)} ${hoy}`, modo: modoHoy ? 'mismo_dia' : 'agendar', fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha),
-        motivo_no_es_hoy: modoHoy ? null : motivoNoHoy, franjas_entrega: cfg.franjas_entrega,
-        sabores, agotados_para_esa_fecha: agotados,
-        agotados_hoy_que_si_se_pueden_agendar: agendables, sin_stock_por_ahora: sinStock,
-        nota: 'cantidad_disponible es la cantidad exacta: úsala si el cliente pregunta cuántas quedan. Un pedido nunca supera esas cantidades.',
+        hoy_ya_se_acabo_todo: hoySeAcaboTodo,
+        motivo_no_es_hoy: modoHoy ? null : (hoySeAcaboTodo ? 'hoy ya se acabaron todas las galletas' : motivoNoHoy), franjas_entrega: cfg.franjas_entrega,
+        sabores_disponibles_para_esa_fecha: sabores.filter((x) => x.disponible),
+        sabores_que_no_alcanzan_para_esa_fecha: faltantes,
+        de_esos_se_pueden_agendar_para_la_siguiente_fecha: agendables, sin_stock_para_ninguna_fecha_por_ahora: sinStock,
+        nota: 'Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado".',
       }
     }
     case 'consultar_tarifa_domicilio': {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { cop } from '../hooks'
 import type { Producto } from '../types'
-import { AsyncButton, Modal, Switch, useToast } from '../ui'
+import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
 const VACIO = { id: '', nombre: '', descripcion: '', precio: '', foto_url: '' as string | null, activo: true }
 
@@ -13,6 +13,7 @@ export default function Catalogo() {
   const [archivo, setArchivo] = useState<File | null>(null)
   const [prev, setPrev] = useState<string | null>(null)
   const [errores, setErrores] = useState<Record<string, boolean>>({})
+  const [conf, setConf] = useState<Confirmacion | null>(null)
 
   const load = async () => { const { data } = await supabase.from('productos').select('*').order('nombre'); setItems(data ?? []) }
   useEffect(() => { load() }, [])
@@ -46,6 +47,21 @@ export default function Catalogo() {
     if (error) { toast(error.message, 'err'); load() } else toast(activo ? `${p.nombre} visible para el bot` : `${p.nombre} oculto`)
   }
 
+  // Eliminar un sabor: si ya tiene pedidos asociados la base lo impide; en ese caso se ofrece desactivarlo (queda oculto para el bot)
+  const eliminar = (p: Producto) => setConf({
+    titulo: `Eliminar "${p.nombre}"`, peligro: true, okText: 'Eliminar sabor',
+    texto: <>¿Seguro que quieres eliminar <b>{p.nombre}</b> del catálogo? También se borra su stock registrado. Esta acción no se puede deshacer.</>,
+    onOk: async () => {
+      const { error } = await supabase.from('productos').delete().eq('id', p.id)
+      if (error) {
+        if (error.code === '23503') toast(`"${p.nombre}" ya tiene pedidos y no se puede eliminar. Desactívalo con el interruptor para ocultarlo.`, 'err')
+        else toast(error.message, 'err')
+        return false
+      }
+      toast(`"${p.nombre}" eliminado`); load()
+    },
+  })
+
   return (
     <>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
@@ -62,7 +78,10 @@ export default function Catalogo() {
               <span className="desc">{p.descripcion || 'Sin descripción'}</span>
               <div className="pie">
                 <Switch checked={p.activo} onChange={(v) => alternar(p, v)} />
-                <button className="sec sm" onClick={() => abrir(p)}>Editar</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="sec sm" onClick={() => abrir(p)}>Editar</button>
+                  <button className="sec sm" onClick={() => eliminar(p)} aria-label={`Eliminar ${p.nombre}`} title="Eliminar">🗑</button>
+                </div>
               </div>
             </div>
           </div>))}
@@ -83,6 +102,7 @@ export default function Catalogo() {
           <Switch checked={ed.activo} onChange={(v) => setEd({ ...ed, activo: v })} label="Visible para el bot y los clientes" />
         </>}
       </Modal>
+      <Confirmar c={conf} onClose={() => setConf(null)} />
     </>
   )
 }
