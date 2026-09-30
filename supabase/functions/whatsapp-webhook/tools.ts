@@ -102,14 +102,14 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     case 'notificar_humano': {
       if (!a.nombre?.trim() || !a.telefono_contacto?.trim() || !a.resumen?.trim())
         return { ok: false, error: 'Faltan datos: pide al cliente su nombre completo, teléfono de contacto y qué necesita, y vuelve a llamar.' }
-      await sb.from('conversaciones').upsert({ telefono: ctx.telefono, humano: true, actualizado_en: new Date().toISOString() })
+      await sb.from('conversaciones').upsert({ telefono: ctx.telefono, humano: true, humano_desde: new Date().toISOString(), actualizado_en: new Date().toISOString() })
       ctx.humano = true
       const motivos: Record<string, string> = { pedido_grande_evento: 'Pedido grande o evento', personalizacion: 'Personalización',
         queja_reclamo: 'Queja o reclamo', otro: 'Otro' }
       const motivo = motivos[a.motivo] ?? 'Otro'
       for (const n of (cfg.admin_numeros ?? '').split(',').map((s) => s.replace(/\D/g, '')).filter(Boolean))
-        await notify(n, { templateEnv: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen, ctx.telefono],
-          text: `⚠️ Atención humana requerida\nCliente: ${a.nombre}\nTeléfono: ${a.telefono_contacto}\nMotivo: ${motivo}\nDetalle: ${a.resumen}\nChat: ${ctx.telefono}\n\nPara reactivar el bot: reanudar ${ctx.telefono}` })
+        await notify(n, { templateEnv: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen],
+          text: `⚠️ Atención humana requerida\nCliente: ${a.nombre}\nTeléfono: ${a.telefono_contacto}\nMotivo: ${motivo}\nDetalle: ${a.resumen}\nChat: ${ctx.telefono}\n\nEl bot se reactiva solo en ${cfg.horas_humano || 12} h. Antes: reanudar ${ctx.telefono}` })
       return { ok: true, instruccion: 'Avisa al cliente que en un momento le escribe alguien del equipo. No sigas respondiendo.' }
     }
   }

@@ -5,11 +5,11 @@ Categoría: **Utility** · Idioma: **Spanish (es)**. Meta rechaza plantillas que
 ## 1. `aviso_admin_mumi`
 Cuerpo:
 ```
-Atención requerida en un pedido. Cliente: {{1}}. Teléfono: {{2}}. Motivo: {{3}}. Detalle: {{4}}. Para reactivar el bot responde: reanudar {{5}}. Gracias.
+Atención requerida en un pedido. Cliente: {{1}}. Teléfono: {{2}}. Motivo: {{3}}. Detalle: {{4}}. Gracias.
 ```
-Ejemplos: {{1}} = María Pérez · {{2}} = 3001234567 · {{3}} = Pedido grande o evento · {{4}} = 30 galletas surtidas para el sábado, sin azúcar · {{5}} = 573001234567
+Ejemplos: {{1}} = María Pérez · {{2}} = 3001234567 · {{3}} = Pedido grande o evento · {{4}} = 30 galletas surtidas para el sábado, sin azúcar
 
-Sin botones. El bot solo dispara este aviso cuando ya tiene nombre, teléfono y detalle del cliente.
+Sin botones. El bot solo dispara este aviso cuando ya tiene nombre, teléfono y detalle del cliente. El bot se reactiva solo tras `horas_humano` horas (Configuración, 12 por defecto); antes se puede forzar escribiendo `reanudar <número>` desde el WhatsApp de admin.
 
 ## 2. `pedido_listo_mumi`
 Cuerpo:

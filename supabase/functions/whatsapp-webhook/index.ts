@@ -38,7 +38,7 @@ async function comandoAdmin(from: string, texto: string, cfg: Record<string, str
   }
   const re = t.match(/^reanudar\s+(\d+)/i)
   if (re) {
-    await sb.from('conversaciones').update({ humano: false }).eq('telefono', re[1])
+    await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', re[1])
     await sendText(from, `Bot reactivado para ${re[1]}`); return true
   }
   return false
@@ -99,8 +99,14 @@ async function manejar(msg: any) {
   if (admins.includes(from) && (await comandoAdmin(from, texto, cfg))) return
   if (from === domi && (await comandoDomiciliario(from, texto))) return
 
-  const { data: conv } = await sb.from('conversaciones').select('humano,ultimo_comprobante').eq('telefono', from).maybeSingle()
-  if (conv?.humano) return // el bot calla mientras atiende una persona
+  const { data: conv } = await sb.from('conversaciones').select('humano,humano_desde,ultimo_comprobante').eq('telefono', from).maybeSingle()
+  if (conv?.humano) {
+    // El bot calla mientras atiende una persona, y se reactiva solo pasadas N horas (config: horas_humano)
+    const horas = Number(cfg.horas_humano) > 0 ? Number(cfg.horas_humano) : 12
+    const desde = conv.humano_desde ? new Date(conv.humano_desde).getTime() : 0
+    if (Date.now() - desde < horas * 3600 * 1000) return
+    await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', from)
+  }
 
   const { data: hist } = await sb.from('mensajes').select('rol,contenido').eq('telefono', from).order('creado_en', { ascending: false }).limit(20)
   const history: Turn[] = (hist ?? []).reverse().map((m) => ({ role: m.rol, content: m.contenido }))
