@@ -32,7 +32,7 @@ export default function Configuracion() {
 
   const set = (k: string, v: string) => setF({ ...f, [k]: v })
   const guardarTodo = async () => {
-    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio', 'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min', 'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'logo_url'])
+    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio', 'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min', 'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'logo_url'])
       if ((f[k] ?? '') !== (cfg[k] ?? '')) await save(k, f[k] ?? '')
     setMsg('Guardado'); loadH()
   }
@@ -92,6 +92,8 @@ export default function Configuracion() {
       <div className="card"><h2>Comportamiento natural y seguimiento</h2>
         <label>Número de atención personalizada (el bot lo da cuando no puede ayudar; ej. 573001234567)</label>
         <input value={f.numero_atencion ?? ''} onChange={(e) => set('numero_atencion', e.target.value)} />
+        <label>Pedidos grandes: desde cuántas galletas en un pedido el bot consulta con el admin (por defecto 30)</label>
+        <input type="number" min={1} value={f.umbral_pedido_grande ?? '30'} onChange={(e) => set('umbral_pedido_grande', e.target.value)} />
         <label>Simular "escribiendo…" y pausas entre mensajes</label>
         <select value={f.simular_escritura ?? 'si'} onChange={(e) => set('simular_escritura', e.target.value)}><option value="si">Sí</option><option value="no">No</option></select>
         <label>Velocidad de escritura (milisegundos por carácter; más alto = más lento)</label>

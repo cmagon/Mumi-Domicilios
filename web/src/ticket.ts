@@ -7,7 +7,7 @@ export function imprimirTickets(pedidos: Pedido[]) {
   const html = pedidos.map((o) => `
     <div class="t"><h3>Pedido #${o.numero}</h3>
     <p><b>${esc(o.cliente_nombre)}</b><br/>Tel: ${esc(o.cliente_telefono)}</p>
-    <p>${o.modalidad === 'domicilio' ? 'Domicilio: ' + esc(o.direccion ?? '') : 'RECOGE EN PUNTO'}</p>
+    <p>${o.modalidad === 'domicilio' ? (o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida): ' : 'Domicilio: ') + esc(o.direccion ?? '') : 'RECOGE EN PUNTO'}</p>
     <ul>${(o.pedido_items ?? []).map((i) => `<li>${i.cantidad} × ${esc(i.productos?.nombre ?? '')}</li>`).join('')}</ul>
     ${o.metodo_pago?.toLowerCase().includes('efectivo') && !o.pagado
       ? `<p class="big">PAGA EN EFECTIVO — COBRAR ${cop(o.total)}</p>` : `<p>Pago: ${esc(o.metodo_pago ?? '')}</p>`}

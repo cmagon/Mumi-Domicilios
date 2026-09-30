@@ -8,7 +8,7 @@ export function lineas(o, ancho = 32) {
   const efectivo = /efectivo/i.test(o.metodo_pago ?? '') && !o.pagado
   const out = [{ t: `PEDIDO #${o.numero}`, big: true, center: true }, { t: sep },
     { t: o.cliente_nombre, bold: true }, { t: `Tel: ${o.cliente_telefono}` },
-    { t: o.modalidad === 'domicilio' ? `DOMICILIO: ${o.direccion ?? ''}` : 'RECOGE EN PUNTO' }]
+    { t: o.modalidad === 'domicilio' ? `${o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida)' : 'DOMICILIO'}: ${o.direccion ?? ''}` : 'RECOGE EN PUNTO' }]
   if (o.fecha_entrega) out.push({ t: `Entrega: ${o.fecha_entrega} ${o.franja_horaria ?? ''}` })
   out.push({ t: sep })
   for (const i of o.pedido_items ?? []) out.push({ t: `${i.cantidad} x ${i.productos?.nombre ?? ''}`, bold: true })

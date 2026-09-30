@@ -4,6 +4,19 @@ export type Turn = { role: 'user' | 'assistant'; content: string }
 export type Proveedor = 'claude' | 'openai' | 'gemini'
 export type Provider = { proveedor: Proveedor; apiKey: string; modelo: string }
 
+// Une turnos consecutivos del mismo rol (el bot envía varios mensajes cortos seguidos)
+export function compactar(filas: { rol: string; contenido: string }[]): Turn[] {
+  const out: Turn[] = []
+  for (const m of filas) {
+    const role = m.rol === 'assistant' ? 'assistant' : 'user'
+    const last = out[out.length - 1]
+    if (last && last.role === role) last.content += '\n' + m.contenido
+    else out.push({ role, content: m.contenido })
+  }
+  while (out.length && out[0].role !== 'user') out.shift()
+  return out
+}
+
 export const modeloPorDefecto = (p: string) =>
   p === 'openai' ? 'gpt-5.4-mini' : p === 'gemini' ? 'gemini-2.5-flash' : 'claude-haiku-4-5-20251001'
 

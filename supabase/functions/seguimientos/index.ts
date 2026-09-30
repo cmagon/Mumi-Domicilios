@@ -2,7 +2,7 @@
 // el bot insiste de forma natural hasta 2 veces, solo en horario diurno y dentro de la ventana de 24 h de WhatsApp.
 // Se invoca por cron (Supabase → Integrations → Cron) cada 10 min con el header x-cron-secret.
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { chat, type Turn } from '../whatsapp-webhook/ai.ts'
+import { chat, compactar } from '../whatsapp-webhook/ai.ts'
 import { construirProveedor } from '../whatsapp-webhook/config.ts'
 import { registrarAlerta } from '../whatsapp-webhook/alerts.ts'
 import { sendText } from '../whatsapp-webhook/wa.ts'
@@ -36,8 +36,7 @@ Deno.serve(async (req) => {
     try {
       const prov = await construirProveedor(sb, cfg)
       const { data: hist } = await sb.from('mensajes').select('rol,contenido').eq('telefono', cv.telefono).order('creado_en', { ascending: false }).limit(12)
-      const history: Turn[] = (hist ?? []).reverse().map((m) => ({ role: m.rol, content: m.contenido }))
-      while (history.length && history[0].role !== 'user') history.shift()
+      const history = compactar((hist ?? []).reverse())
       history.push({ role: 'user', content: `[Sistema — este mensaje no lo escribió el cliente] El cliente lleva ${n === 0 ? 'un rato' : 'varias horas'} sin responder. ` +
         `Pendiente: ${cv.esperando}. Escribe UN solo recordatorio breve, cálido y natural (máx. 2 frases), que retome lo pendiente sin presionar y sin repetir todo el resumen. ` +
         (n === 1 ? 'Es el último recordatorio: sé aún más breve y deja la puerta abierta ("cuando quieras me avisas").' : '')})

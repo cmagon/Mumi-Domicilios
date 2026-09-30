@@ -3,13 +3,14 @@ const V = 'v21.0'
 const token = () => Deno.env.get('WHATSAPP_TOKEN')!
 const phoneId = () => Deno.env.get('WHATSAPP_PHONE_ID')!
 
-async function post(body: unknown) {
+async function post(body: unknown): Promise<string | null> {
   const r = await fetch(`https://graph.facebook.com/${V}/${phoneId()}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', ...(body as object) }),
   })
-  if (!r.ok) console.error('WA send error', r.status, await r.text())
+  if (!r.ok) { console.error('WA send error', r.status, await r.text()); return null }
+  try { return (await r.json())?.messages?.[0]?.id ?? null } catch { return null }
 }
 
 // Marca como leído y muestra "escribiendo…" (hasta 25 s o hasta que se envíe una respuesta)

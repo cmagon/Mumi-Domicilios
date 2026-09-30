@@ -14,7 +14,15 @@ export default function Pedidos() {
     const { data } = await supabase.from('pedidos')
       .select('*, pedido_items(cantidad, producto_id, productos(nombre))')
       .order('creado_en', { ascending: false }).limit(100)
-    setPedidos((data ?? []) as unknown as Pedido[])
+    const lista = (data ?? []) as unknown as Pedido[]
+    setPedidos(lista)
+    // Soporte de pago adjunto: URLs firmadas (5 min) para mostrarlo sin clic
+    const rutas = lista.map((o) => o.comprobante_url).filter(Boolean) as string[]
+    if (rutas.length) {
+      const { data: firmadas } = await supabase.storage.from('comprobantes').createSignedUrls(rutas, 3600)
+      const porRuta = new Map((firmadas ?? []).map((f) => [f.path, f.signedUrl]))
+      setComp(Object.fromEntries(lista.filter((o) => o.comprobante_url && porRuta.get(o.comprobante_url)).map((o) => [o.id, porRuta.get(o.comprobante_url!)!])))
+    }
   }, [])
 
   useEffect(() => {
@@ -35,11 +43,6 @@ export default function Pedidos() {
     await supabase.from('pedidos').update({ estado, ...(estado === 'pago_verificado' ? { pagado: true } : {}) }).eq('id', id)
     load()
   }
-  const verComprobante = async (o: Pedido) => {
-    if (!o.comprobante_url) return
-    const { data } = await supabase.storage.from('comprobantes').createSignedUrl(o.comprobante_url, 300)
-    if (data) setComp({ ...comp, [o.id]: data.signedUrl })
-  }
   const lista = pedidos.filter((o) => filtro === 'todos' || !['entregado', 'cancelado'].includes(o.estado))
 
   return (
@@ -57,9 +60,11 @@ export default function Pedidos() {
           <ul>{(o.pedido_items ?? []).map((i, k) => <li key={k}>{i.cantidad} × {i.productos?.nombre}</li>)}</ul>
           <p>{cop(o.total)} · {o.metodo_pago} · {o.pagado ? 'pagado' : 'sin pagar'}</p>
           {o.nota && <p><b>Nota:</b> {o.nota}</p>}
-          {o.comprobante_url && (comp[o.id]
-            ? <a href={comp[o.id]} target="_blank"><img className="thumb" src={comp[o.id]} alt="comprobante" /></a>
-            : <button className="sec sm" onClick={() => verComprobante(o)}>Ver comprobante de pago</button>)}
+          {o.direccion_aprox && <p>📍 <b>Dirección aproximada</b> (ubicación compartida){o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank">Ver en el mapa</a></>}</p>}
+          {o.comprobante_url && comp[o.id] && (
+            <div><span className="muted">Soporte de pago:</span><br />
+              <a href={comp[o.id]} target="_blank"><img src={comp[o.id]} alt="comprobante de pago" style={{ maxHeight: 180, maxWidth: '100%', borderRadius: 8, border: '1px solid var(--bd)' }} /></a></div>)}
+          {!o.comprobante_url && o.metodo_pago && !/efectivo/i.test(o.metodo_pago) && !o.pagado && <p className="err">Sin soporte de pago todavía</p>}
           <div className="row" style={{ marginTop: 8 }}>
             <select value={o.estado} onChange={(e) => cambiar(o.id, e.target.value)}>
               {ESTADOS.map((e) => <option key={e}>{e}</option>)}</select>
