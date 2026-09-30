@@ -121,7 +121,7 @@ async function manejar(msg: any, nombreWA?: string) {
   }
   await sb.from('mensajes').update({ contenido: texto }).eq('wa_id', msg.id)
   // El cliente respondió: se cancela cualquier seguimiento pendiente
-  await sb.from('conversaciones').upsert({ telefono: from, esperando: null, esperando_desde: null, seguimientos: 0, ultimo_cliente_en: new Date().toISOString() }, { onConflict: 'telefono' })
+  await sb.from('conversaciones').upsert({ telefono: from, esperando: null, esperando_desde: null, seguimientos: 0, ultimo_cliente_en: new Date().toISOString(), ...(nombreWA ? { nombre_wa: nombreWA } : {}) }, { onConflict: 'telefono' })
 
   if (admins.includes(from) && (await comandoAdmin(from, texto, cfg))) return
   if (from === domi && (await comandoDomiciliario(from, texto))) return

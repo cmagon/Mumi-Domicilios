@@ -4,6 +4,7 @@ import { cop } from '../hooks'
 import type { Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
 import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion } from '../ui'
+import ChatModal from '../ChatModal'
 import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
 
 type Filtro = 'activos' | 'entregados' | 'cancelados' | 'archivados'
@@ -18,6 +19,7 @@ export default function Pedidos() {
   const [nuevos, setNuevos] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<string | null>(null)
   const [detalle, setDetalle] = useState<Pedido | null>(null)
+  const [chat, setChat] = useState<Pedido | null>(null)
   const [conf, setConf] = useState<Confirmacion | null>(null)
   const primera = useRef(true)
 
@@ -170,6 +172,7 @@ export default function Pedidos() {
                         {menu === o.id && (
                           <div className="menu-pop">
                             <button onClick={() => { setDetalle(o); setMenu(null) }}>Ver detalle / editar</button>
+                            {o.chat_telefono && <button onClick={() => { setChat(o); setMenu(null) }}>💬 Ver chat</button>}
                             <button onClick={() => { reimprimir(o); setMenu(null) }}>Reimprimir ticket</button>
                             <button onClick={() => { imprimirTickets([o]); setMenu(null) }}>Imprimir desde el navegador</button>
                             {o.archivado ? <button onClick={() => { archivar(o, false); setMenu(null) }}>Sacar de archivados</button>
@@ -200,6 +203,7 @@ export default function Pedidos() {
                             : <span className="badge ok">✓ Entregado</span>}
                           {listo && <button className="sec sm" onClick={() => archivar(o, !o.archivado)}>{o.archivado ? 'Sacar de archivados' : 'Archivar'}</button>}
                         </>}
+                      {o.chat_telefono && <button className="sec sm" onClick={() => setChat(o)}>💬 Ver chat</button>}
                       {comp[o.id] && <button className="sec sm" onClick={() => setDetalle(o)}>🧾 Soporte</button>}
                     </div>
                   </div>)
@@ -210,14 +214,15 @@ export default function Pedidos() {
 
       <DetallePedido pedido={detalle} comprobante={detalle ? comp[detalle.id] : undefined} onClose={() => setDetalle(null)}
         onGuardar={async (id, c) => { const ok = await actualizar(id, c); if (ok) toast('Pedido actualizado'); return ok }}
-        onEliminar={eliminar} onCancelar={cancelar} />
+        onEliminar={eliminar} onCancelar={cancelar} onChat={(p) => setChat(p)} />
+      <ChatModal telefono={chat?.chat_telefono ?? null} titulo={chat ? `Chat · pedido #${chat.numero} · ${chat.cliente_nombre}` : ''} onClose={() => setChat(null)} />
       <Confirmar c={conf} onClose={() => setConf(null)} />
     </>
   )
 }
 
-function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar, onCancelar }: {
-  pedido: Pedido | null; comprobante?: string; onClose: () => void
+function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar, onCancelar, onChat }: {
+  pedido: Pedido | null; onChat: (o: Pedido) => void; comprobante?: string; onClose: () => void
   onGuardar: (id: string, c: Record<string, unknown>) => Promise<boolean>; onEliminar: (o: Pedido) => void; onCancelar: (o: Pedido) => void
 }) {
   const [f, setF] = useState({ hora: '', franja: '', nota: '', direccion: '', fecha: '' })
@@ -234,6 +239,7 @@ function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar,
   return (
     <Modal abierto titulo={`Pedido #${o.numero} · ${o.cliente_nombre}`} onClose={onClose} ancho={560}
       pie={<>
+        {o.chat_telefono && <button className="sec" onClick={() => onChat(o)}>💬 Ver chat</button>}
         {o.estado !== 'cancelado' && o.estado !== 'entregado' && <button className="sec" onClick={() => onCancelar(o)}>Cancelar pedido</button>}
         <button className="peligro" onClick={() => onEliminar(o)}>Eliminar</button>
         <AsyncButton okText="Guardado" onClick={() => onGuardar(o.id, { hora_entrega_solicitada: f.hora || null, franja_horaria: f.franja || null, nota: f.nota || null, direccion: f.direccion || null, fecha_entrega: f.fecha || null })}>Guardar cambios</AsyncButton>

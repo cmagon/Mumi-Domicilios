@@ -149,3 +149,19 @@ button.ghost { background: transparent; color: var(--mut); padding: 4px 8px; }
 .tarjeta.nueva { border: 2px dashed var(--bd); background: transparent; align-items: center; justify-content: center; min-height: 200px; color: var(--mut); cursor: pointer; font-size: 14px; }
 .tarjeta.nueva:hover { color: var(--p); border-color: var(--s); }
 .tarjeta.nueva .mas { font-size: 34px; line-height: 1; }
+
+/* Chat */
+.chat { display: flex; flex-direction: column; gap: 4px; background: #efeae2; border-radius: 12px; padding: 10px; max-height: 55vh; overflow-y: auto; }
+.chat-dia { align-self: center; background: #fff; color: var(--mut); font-size: 11px; padding: 3px 10px; border-radius: 10px; margin: 8px 0 4px; text-transform: capitalize; }
+.burbuja { max-width: 82%; padding: 6px 9px 4px; border-radius: 10px; font-size: 14px; white-space: pre-wrap; word-break: break-word; box-shadow: 0 1px 1px rgba(0, 0, 0, .1); animation: fadeUp .2s ease both; }
+.burbuja.cli { align-self: flex-start; background: #fff; }
+.burbuja.bot { align-self: flex-end; background: #d9fdd3; }
+.burbuja.nota { font-style: italic; color: var(--mut); background: #f7f3c9; }
+.burbuja .hora { display: block; text-align: right; font-size: 10px; color: var(--mut); margin-top: 2px; }
+.barras { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.barra-fila { display: grid; grid-template-columns: 150px 1fr 34px; gap: 8px; align-items: center; font-size: 13px; }
+.barra-fila .pista { background: var(--bd); border-radius: 6px; height: 10px; overflow: hidden; }
+.barra-fila .relleno { background: var(--s); height: 100%; border-radius: 6px; transition: width .5s ease; }
+@media (max-width: 480px) { .barra-fila { grid-template-columns: 110px 1fr 28px; } }
+.badge.venta { background: #d8f0dc; color: #1e5e2a; } .badge.trunc { background: #ffe0d6; color: #8e2a10; }
+.badge.hum { background: #e3e0ff; color: #3b2f9e; } .badge.curso { background: #e8f1ff; color: #1b4f96; }

@@ -7,6 +7,7 @@ import { construirProveedor } from '../whatsapp-webhook/config.ts'
 import { registrarAlerta } from '../whatsapp-webhook/alerts.ts'
 import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
+import { analizarSesiones } from '../whatsapp-webhook/analisis.ts'
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -14,6 +15,9 @@ Deno.serve(async (req) => {
   if (req.headers.get('x-cron-secret') !== Deno.env.get('NOTIFY_WEBHOOK_SECRET')) return new Response('forbidden', { status: 403 })
   const { data: c } = await sb.from('config').select('clave,valor')
   const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
+  // Aprovecha la ejecución del cron para analizar unas pocas conversaciones cerradas sin venta
+  await analizarSesiones(sb, cfg, 3).catch(() => 0)
+
   if (cfg.seguimiento_activo === 'no') return new Response('desactivado')
 
   const hora = Number(new Date().toLocaleString('en-US', { timeZone: TZ, hour: 'numeric', hour12: false })) % 24
