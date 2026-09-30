@@ -106,7 +106,9 @@ async function geminiLoop(prov: Provider, system: string, history: Turn[], tools
     return { name: t.name, description: t.description, ...(Object.keys(props).length ? { parameters: geminiSchema(t.parameters) } : {}) }
   })
   for (let i = 0; i < 8; i++) {
-    const data = await geminiCall(prov, { systemInstruction: { parts: [{ text: system }] }, contents, ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}) })
+    const data = await geminiCall(prov, { systemInstruction: { parts: [{ text: system }] }, contents,
+      // Gemini 2.5 Flash: sin "pensamiento" (más rápido, más barato y menos respuestas vacías)
+      ...(/2\.5-flash/.test(prov.modelo) ? { generationConfig: { thinkingConfig: { thinkingBudget: 0 } } } : {}), ...(functionDeclarations.length ? { tools: [{ functionDeclarations }] } : {}) })
     const cand = data.candidates?.[0]
     if (!cand?.content) throw new Error(`Gemini sin respuesta (${cand?.finishReason ?? data.promptFeedback?.blockReason ?? 'desconocido'})`)
     const parts = cand.content.parts ?? []
