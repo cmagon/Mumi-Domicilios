@@ -166,6 +166,7 @@ export default function Pedidos() {
                         {o.origen === 'manual' && <span className="badge">manual</span>}{' '}
                         {o.hora_entrega_solicitada && <span className={`badge hora-pedida ${esUrgente(o) ? 'rojo' : ''}`}>🕒 {horaBonita(o.hora_entrega_solicitada)}</span>}
                         {esUrgente(o) && <span className="badge rojo">¡pronto!</span>}
+                        {o.pendiente_produccion && <span className="badge hora-pedida" title="Parte del pedido aún no está fabricada">🍪 Por producir</span>}
                       </div>
                       <div style={{ flex: 'none', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                         <button className="sec sm" onClick={() => setMenu(menu === o.id ? null : o.id)} aria-label="Más opciones">⋯</button>

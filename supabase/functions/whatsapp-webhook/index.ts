@@ -186,6 +186,13 @@ async function manejar(msg: any, nombreWA?: string) {
   } catch (e) { console.error('ia', e); await registrarAlerta(sb, cfg, 'error', String(e)); respuesta = FALLBACK }
   console.log('respuesta', from, JSON.stringify(respuesta.slice(0, 120)))
   if (respuesta) {
+    // No repetir lo que ya se le dijo al cliente, salvo que vuelva a preguntar
+    const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9ñ ]/g, ' ').replace(/\s+/g, ' ').trim()
+    const dicho = new Set(history.filter((h) => h.role === 'assistant').slice(-6).flatMap((h) => h.content.split('\n').map(norm)).filter(Boolean))
+    const pregunto = /[?¿]/.test(texto) || /^(cu[aá]l|cu[aá]les|qu[eé]|c[oó]mo|cu[aá]nt|d[oó]nde|hay|tiene|tienen)\b/i.test(texto.trim())
+    const partes = respuesta.split(/\n{2,}/)
+    const nuevas = partes.filter((p) => p.trim() === '[[FOTOS]]' || !p.split('\n').map(norm).filter(Boolean).every((l) => dicho.has(l)))
+    if (!pregunto && nuevas.some((p) => p.trim() !== '[[FOTOS]]') && nuevas.length < partes.length) { console.log('se omiten mensajes repetidos', from); respuesta = nuevas.join('\n\n') }
     await enviarNatural(from, respuesta, ctx, msg.id, cfg)
     // Seguimiento: si el bot dejó algo pendiente del cliente, se programa el recordatorio
     // Si quedó una pregunta abierta y la venta no está cerrada, también se programa retomar la conversación
