@@ -31,10 +31,10 @@ export function cierreEntregas(franjas: string): { min: number; texto: string } 
   const h = Math.floor(min / 60), m = min % 60
   return { min, texto: `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h >= 12 ? 'p. m.' : 'a. m.'}` }
 }
-// Primera fecha de entrega posible: hoy si es día de producción y aún hay horario; si no, la próxima producción.
-export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string) {
+// Primera fecha de entrega posible: hoy si es día de producción y aún se toman pedidos (hasta `margen` min antes del cierre); si no, la próxima producción.
+export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string, margen = 60) {
   const cierre = cierreEntregas(franjas)
-  const hoyOk = esDiaProduccion(hoy, dias) && (!cierre || minutosAhora() < cierre.min)
+  const hoyOk = esDiaProduccion(hoy, dias) && (!cierre || minutosAhora() < cierre.min - margen)
   return { fecha: hoyOk ? hoy : proximaProduccion(hoy, dias, false), cierre }
 }
 const manana = (hoy: string) => new Date(new Date(hoy + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
@@ -124,28 +124,46 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     }
     case 'consultar_stock': {
       const hoy = fechaBogota()
-      const sug = fechaEntregaSugerida(hoy, dias, cfg.franjas_entrega ?? '')
-      const fecha: string | null = a.fecha ?? sug.fecha
+      const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
+      const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
+      const etiqueta = (f: string) => f === hoy ? `hoy${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
+      const resumen = async (f: string) => ((await sb.rpc('stock_resumen', { p_fecha: f })).data ?? []) as any[]
+
+      const filasHoy = await resumen(hoy)
+      const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
+      const diaProd = esDiaProduccion(hoy, dias)
+      const enHorario = !cierre || minutosAhora() < cierre.min - margen
+      const puedeHoy = diaProd && horneadoHoy && enHorario
+      const motivoNoHoy = puedeHoy ? null
+        : !diaProd ? 'hoy no es día de producción'
+        : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes del cierre de entregas)`
+        : 'aún no se ha registrado el horneado de hoy'
+      const proxima = proximaProduccion(hoy, dias, false)
+      const pedida: string | undefined = a.fecha
+      const modoHoy = pedida ? pedida === hoy : puedeHoy
+      const fecha = pedida ?? (puedeHoy ? hoy : proxima)
       if (!fecha) return { error: 'No hay días de producción configurados' }
-      const etiqueta = (f: string) => f === hoy ? `hoy${sug.cierre ? ` (entregas hasta las ${sug.cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
-      const [{ data: prods }, { data: filas }] = await Promise.all([
-        sb.from('productos').select('id,nombre').eq('activo', true).order('nombre'),
-        sb.from('stock_dia').select('producto_id,cantidad_excedente').eq('fecha', fecha),
-      ])
-      const porId = new Map((filas ?? []).map((r: any) => [r.producto_id, r.cantidad_excedente as number]))
-      // Con fila: cantidad exacta. Sin fila en una fecha futura: cupo aún no definido (se puede agendar). Sin fila hoy: no cargado = 0.
-      const sabores = (prods ?? []).map((p: any) => {
-        const tiene = porId.has(p.id)
-        const cantidad = tiene ? porId.get(p.id)! : (fecha === hoy ? 0 : null)
-        return { sabor: p.nombre, disponible: cantidad === null || cantidad > 0, cantidad_disponible: cantidad, cantidad_no_definida: cantidad === null }
+      const filas = fecha === hoy ? filasHoy : await resumen(fecha)
+      const sabores = filas.filter((r) => r.activo).map((r) => {
+        const cant = modoHoy ? Number(r.extras_dia) : Number(r.disponible_general)
+        return { sabor: r.nombre as string, disponible: cant > 0, cantidad_disponible: cant }
       })
-      const siguiente = proximaProduccion(fecha, dias, false)
+      const agotados = sabores.filter((x) => !x.disponible).map((x) => x.sabor)
+      let agendables: unknown = null
+      let sinStock: string[] = []
+      if (modoHoy && agotados.length && proxima) {
+        // Lo agotado hoy se puede agendar para la siguiente fecha si hay stock general
+        const gen = await resumen(proxima)
+        const con = gen.filter((r) => agotados.includes(r.nombre) && Number(r.disponible_general) > 0)
+        agendables = { fecha: proxima, cuando_decirlo: etiqueta(proxima), sabores: con.map((r) => ({ sabor: r.nombre, cantidad_disponible: Number(r.disponible_general) })) }
+        sinStock = agotados.filter((n) => !con.some((r) => r.nombre === n))
+      } else if (!modoHoy) sinStock = agotados
       return {
-        hoy: `${diaSemana(hoy)} ${hoy}`, fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha), entrega_es_hoy: fecha === hoy,
-        franjas_entrega: cfg.franjas_entrega, sabores,
-        agotados_para_esa_fecha: sabores.filter((x) => !x.disponible).map((x) => x.sabor),
-        siguiente_fecha_para_agotados: siguiente ? { fecha: siguiente, cuando_decirlo: etiqueta(siguiente) } : null,
-        nota: 'Si cantidad_no_definida es true no inventes números: di que hay disponibilidad. Si te piden "cuántas quedan", da cantidad_disponible de cada sabor.',
+        hoy: `${diaSemana(hoy)} ${hoy}`, modo: modoHoy ? 'mismo_dia' : 'agendar', fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha),
+        motivo_no_es_hoy: modoHoy ? null : motivoNoHoy, franjas_entrega: cfg.franjas_entrega,
+        sabores, agotados_para_esa_fecha: agotados,
+        agotados_hoy_que_si_se_pueden_agendar: agendables, sin_stock_por_ahora: sinStock,
+        nota: 'cantidad_disponible es la cantidad exacta: úsala si el cliente pregunta cuántas quedan. Un pedido nunca supera esas cantidades.',
       }
     }
     case 'consultar_tarifa_domicilio': {
@@ -262,7 +280,9 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   if (fecha < hoy) return { ok: false, error: 'Fecha en el pasado' }
   if (!esDiaProduccion(fecha, cfg.dias_produccion ?? '')) return { ok: false, error: 'Esa fecha no es día de producción' }
   const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
-  if (fecha === hoy && cierre && minutosAhora() >= cierre.min) return { ok: false, error: 'Ya pasó el horario de entregas de hoy; ofrece la próxima fecha de producción' }
+  const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
+  if (fecha === hoy && cierre && minutosAhora() >= cierre.min - margen)
+    return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes del cierre de entregas); ofrece la próxima fecha de entrega` }
 
   // Pedidos grandes se consultan con el admin
   const unidades = (a.items ?? []).reduce((t: number, i: any) => t + (Number(i.cantidad) || 0), 0)
@@ -277,6 +297,10 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
     return { ok: false, error: `El cliente todavía no ha dicho cómo va a pagar. Pregúntale ofreciendo solo: ${listaMetodos(disp)}; no asumas ninguno.` }
   const horaPedida = a.hora_entrega ? normalizarHora(a.hora_entrega) : null
   if (a.hora_entrega && !horaPedida) return { ok: false, error: 'hora_entrega debe tener formato HH:MM' }
+  if (fecha === hoy && horaPedida) {
+    const [hh, mm] = horaPedida.split(':').map(Number)
+    if (hh * 60 + mm < minutosAhora() + margen) return { ok: false, error: `Esa hora ya no alcanza: se necesitan al menos ${margen} min de anticipación. Ofrece otra hora o agendar para la siguiente fecha.` }
+  }
 
   const items: { producto_id: string; cantidad: number; precio: number; nombre: string }[] = []
   for (const it of a.items) {
@@ -292,23 +316,23 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
     tarifa = hit.valor
     if (!a.direccion) return { ok: false, error: 'Falta la dirección' }
   }
-  const reservados: typeof items = []
-  for (const it of items) {
-    // Fecha futura sin cupo cargado todavía: se agenda sin límite (queda como agendado y el admin define el excedente después)
-    const { data: fila } = await sb.from('stock_dia').select('id').eq('fecha', fecha).eq('producto_id', it.producto_id).maybeSingle()
-    const { data: ok } = await sb.rpc('reservar_stock', { p_fecha: fecha, p_producto: it.producto_id, p_cantidad: it.cantidad, p_forzar: fecha > hoy && !fila })
-    if (!ok) {
-      for (const r of reservados) await sb.rpc('liberar_stock', { p_fecha: fecha, p_producto: r.producto_id, p_cantidad: r.cantidad })
-      await sb.from('demanda_insatisfecha').insert({ fecha, producto_id: it.producto_id, cantidad: it.cantidad, telefono: ctx.telefono })
-      return { ok: false, error: `Sin cupo suficiente de ${it.nombre} para ${fecha}` }
+  // Stock: mismo día = extras horneados; fechas futuras = stock general (fabricado menos lo ya agendado)
+  const pedidas = new Map<string, number>()
+  items.forEach((i) => pedidas.set(i.producto_id, (pedidas.get(i.producto_id) ?? 0) + i.cantidad))
+  const filas = ((await sb.rpc('stock_resumen', { p_fecha: fecha })).data ?? []) as any[]
+  for (const [pid, cant] of pedidas) {
+    const r = filas.find((x) => x.producto_id === pid)
+    const disponibles = fecha === hoy ? (r?.horneado_registrado ? Number(r.extras_dia) : 0) : Number(r?.disponible_general ?? 0)
+    if (cant > disponibles) {
+      const nombre = items.find((i) => i.producto_id === pid)!.nombre
+      await sb.from('demanda_insatisfecha').insert({ fecha, producto_id: pid, cantidad: cant - disponibles, telefono: ctx.telefono })
+      return { ok: false, sin_stock: true, sabor: nombre, disponibles, error: `Solo ${disponibles === 0 ? 'no quedan' : 'quedan ' + disponibles} de ${nombre} ${fecha === hoy ? 'para hoy' : 'disponibles para agendar'}. Ofrece lo que hay o consulta la siguiente fecha con consultar_stock.` }
     }
-    reservados.push(it)
   }
   const total = items.reduce((s, i) => s + i.precio * i.cantidad, 0) + tarifa
   const efectivo = sinAcento(a.metodo_pago).includes('efectivo')
   const pagoOk = !efectivo && ctx.comprobanteOk === true
   if (!efectivo && !pagoOk) {
-    for (const r of reservados) await sb.rpc('liberar_stock', { p_fecha: fecha, p_producto: r.producto_id, p_cantidad: r.cantidad })
     return { ok: false, error: 'Pago no verificado: usa validar_comprobante primero' }
   }
   let ubic: { lat?: number | null; lng?: number | null } = {}
@@ -323,10 +347,7 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
     tarifa_domicilio: tarifa, total, nota: a.nota ?? null, fecha_entrega: fecha, franja_horaria: a.franja_horaria ?? null,
     comprobante_url: pagoOk ? ctx.comprobantePath : null, referencia_pago: pagoOk ? ctx.referencia : null,
   }).select('id,numero').single()
-  if (error || !ped) {
-    for (const r of reservados) await sb.rpc('liberar_stock', { p_fecha: fecha, p_producto: r.producto_id, p_cantidad: r.cantidad })
-    return { ok: false, error: error?.message }
-  }
+  if (error || !ped) return { ok: false, error: error?.message }
   if (pagoOk) await avisar(sb, 'pago', `Pago recibido — pedido #${ped.numero}`, `$${total} (validado automáticamente)`, ped.id, ctx.telefono)
   await sb.from('pedido_items').insert(items.map((i) => ({ pedido_id: ped.id, producto_id: i.producto_id, cantidad: i.cantidad, precio_unitario: i.precio })))
   return { ok: true, numero_pedido: ped.numero, total, cobrar_en_entrega: efectivo ? total : 0, fecha_entrega: fecha }

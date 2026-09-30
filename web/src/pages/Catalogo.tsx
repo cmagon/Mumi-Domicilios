@@ -52,16 +52,24 @@ export default function Catalogo() {
         <h2 style={{ margin: 0, flex: '1 1 auto' }}>Catálogo</h2>
         <button onClick={() => abrir()}>+ Nuevo sabor</button>
       </div>
-      {items.map((p) => (
-        <div className="card" key={p.id} style={{ opacity: p.activo ? 1 : 0.6 }}>
-          <div className="fila-item">
-            {p.foto_url ? <img className="thumb" src={p.foto_url} alt={p.nombre} /> : <div className="foto-vacia" />}
-            <div className="crece"><b>{p.nombre}</b><div className="muted">{cop(p.precio)}{p.descripcion ? ` · ${p.descripcion}` : ''}</div></div>
-            <Switch checked={p.activo} onChange={(v) => alternar(p, v)} />
-            <button className="sec sm" onClick={() => abrir(p)}>Editar</button>
-          </div>
-        </div>))}
-      {!items.length && <p className="muted">Aún no hay sabores. Crea el primero.</p>}
+      <div className="tarjetas">
+        {items.map((p) => (
+          <div className={`tarjeta ${p.activo ? '' : 'off'}`} key={p.id}>
+            {p.foto_url ? <img className="foto" src={p.foto_url} alt={p.nombre} /> : <div className="foto" />}
+            <div className="info">
+              <b>{p.nombre}</b>
+              <span className="precio">{cop(p.precio)}</span>
+              <span className="desc">{p.descripcion || 'Sin descripción'}</span>
+              <div className="pie">
+                <Switch checked={p.activo} onChange={(v) => alternar(p, v)} />
+                <button className="sec sm" onClick={() => abrir(p)}>Editar</button>
+              </div>
+            </div>
+          </div>))}
+        <div className="tarjeta nueva" role="button" tabIndex={0} onClick={() => abrir()} onKeyDown={(e) => e.key === 'Enter' && abrir()}>
+          <span className="mas">＋</span>Nuevo sabor
+        </div>
+      </div>
 
       <Modal abierto={!!ed} titulo={ed?.id ? 'Editar sabor' : 'Nuevo sabor'} onClose={() => setEd(null)}
         pie={<><button className="sec" onClick={() => setEd(null)}>Cancelar</button><AsyncButton okText="Guardado" onClick={guardar}>Guardar</AsyncButton></>}>

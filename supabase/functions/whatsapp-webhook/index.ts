@@ -18,18 +18,21 @@ async function cargarConfig() {
 
 async function comandoAdmin(from: string, texto: string, cfg: Record<string, string>): Promise<boolean> {
   const t = texto.trim()
-  if (/^hoy\s*:/i.test(t)) {
+  // "Hoy: cacao 30, limón 20" = total que se hornea hoy (incluye lo reservado). "Fabricadas: cacao 40, limón 30" = suma al stock general.
+  const modo = /^hoy\s*:/i.test(t) ? 'hoy' : /^(fabricad[oa]s?|congelad[oa]s?|stock)\s*:/i.test(t) ? 'lote' : null
+  if (modo) {
     const { data: prods } = await sb.from('productos').select('id,nombre').eq('activo', true)
-    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    const hoy = fechaBogota(); const ok: string[] = []; const fallo: string[] = []
-    for (const par of t.replace(/^hoy\s*:/i, '').split(',')) {
-      const m = par.trim().match(/^(.+?)\s+(\d+)$/)
+    const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    const fecha = fechaBogota(); const ok: string[] = []; const fallo: string[] = []
+    for (const par of t.replace(/^[^:]*:/, '').split(',')) {
+      const m = par.trim().match(/^(.+?)\s+(-?\d+)$/)
       const p = m && (prods ?? []).find((x) => norm(x.nombre).includes(norm(m[1])) || norm(m[1]).includes(norm(x.nombre).split(' ')[0]))
       if (!m || !p) { fallo.push(par.trim()); continue }
-      await sb.from('stock_dia').upsert({ fecha: hoy, producto_id: p.id, cantidad_excedente: +m[2] }, { onConflict: 'fecha,producto_id' })
+      if (modo === 'hoy') await sb.from('produccion_dia').upsert({ fecha, producto_id: p.id, horneadas: Math.max(0, +m[2]), actualizado_en: new Date().toISOString() }, { onConflict: 'fecha,producto_id' })
+      else await sb.from('stock_lotes').insert({ producto_id: p.id, cantidad: +m[2], nota: 'Registrado por WhatsApp', fecha })
       ok.push(`${p.nombre}: ${m[2]}`)
     }
-    await sendText(from, `Excedente de hoy actualizado:\n${ok.join('\n') || '—'}${fallo.length ? `\nNo entendí: ${fallo.join(', ')}` : ''}`)
+    await sendText(from, `${modo === 'hoy' ? 'Horneado de hoy registrado' : 'Stock general actualizado (suma)'}:\n${ok.join('\n') || '—'}${fallo.length ? `\nNo entendí: ${fallo.join(', ')}` : ''}`)
     return true
   }
   const re = t.match(/^reanudar\s+(\d+)/i)

@@ -128,3 +128,24 @@ button.ghost { background: transparent; color: var(--mut); padding: 4px 8px; }
 .fila-item > * { flex: none; }
 .fila-item > .crece { flex: 1 1 auto; }
 .foto-vacia { width: 56px; height: 56px; border-radius: 8px; background: var(--bd); }
+
+.stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.stock-item { border: 1px solid var(--bd); border-radius: 12px; padding: 10px 12px; background: #fff; transition: border-color .2s, background .2s; }
+.stock-item.cero { border-color: #f0b4b4; background: #fff6f6; }
+.stock-nombre { font-weight: 600; font-size: 14px; }
+.stock-num { font-size: 30px; font-weight: 800; color: var(--p); line-height: 1.1; animation: salto .35s ease; }
+.stock-item.cero .stock-num { color: #b00020; }
+.stock-detalle { font-size: 11px; color: var(--mut); margin-top: 4px; }
+.tarjetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.tarjeta { background: #fff; border: 1px solid var(--bd); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: transform .2s ease, box-shadow .2s ease, opacity .2s; animation: fadeUp .3s ease both; }
+.tarjeta:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0, 0, 0, .1); }
+.tarjeta.off { opacity: .55; }
+.tarjeta .foto { aspect-ratio: 1 / 1; width: 100%; object-fit: cover; background: var(--bd); display: block; }
+.tarjeta .info { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.tarjeta .info b { font-size: 15px; }
+.tarjeta .desc { font-size: 12px; color: var(--mut); flex: 1; }
+.tarjeta .precio { font-weight: 700; color: var(--p); }
+.tarjeta .pie { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.tarjeta.nueva { border: 2px dashed var(--bd); background: transparent; align-items: center; justify-content: center; min-height: 200px; color: var(--mut); cursor: pointer; font-size: 14px; }
+.tarjeta.nueva:hover { color: var(--p); border-color: var(--s); }
+.tarjeta.nueva .mas { font-size: 34px; line-height: 1; }

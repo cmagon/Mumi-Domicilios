@@ -96,11 +96,6 @@ export default function Pedidos() {
     setPedidos((l) => l.map((o) => (o.id === id ? { ...o, ...cambios } as Pedido : o)))
     return true
   }
-  const liberarStock = async (o: Pedido) => {
-    if (!o.fecha_entrega || o.estado === 'cancelado' || o.estado === 'entregado') return
-    for (const i of o.pedido_items ?? []) await supabase.rpc('liberar_stock', { p_fecha: o.fecha_entrega, p_producto: i.producto_id, p_cantidad: i.cantidad })
-  }
-
   const mover = async (o: Pedido, delta: 1 | -1) => {
     const nuevo = pasoDe(o.estado) + delta
     if (nuevo < 0 || nuevo >= PASOS.length) return false
@@ -128,14 +123,13 @@ export default function Pedidos() {
   const archivar = async (o: Pedido, v: boolean) => { if (await actualizar(o.id, { archivado: v })) toast(v ? `Pedido #${o.numero} archivado` : `Pedido #${o.numero} restaurado`) }
   const cancelar = (o: Pedido) => setConf({
     titulo: `Cancelar pedido #${o.numero}`, peligro: true, okText: 'Cancelar pedido',
-    texto: <>Se libera el stock reservado. El pedido pasa a <b>Cancelados</b> y puedes archivarlo o eliminarlo después.</>,
-    onOk: async () => { await liberarStock(o); return actualizar(o.id, { estado: 'cancelado' }) },
+    texto: <>El stock reservado se devuelve solo. El pedido pasa a <b>Cancelados</b> y puedes archivarlo o eliminarlo después.</>,
+    onOk: () => actualizar(o.id, { estado: 'cancelado' }),
   })
   const eliminar = (o: Pedido) => setConf({
     titulo: `Eliminar pedido #${o.numero}`, peligro: true, okText: 'Eliminar definitivamente',
-    texto: <>Se borra <b>definitivamente</b> el pedido de {o.cliente_nombre} ({cop(o.total)}) y su historial. {o.estado !== 'cancelado' && o.estado !== 'entregado' && 'Se libera también el stock reservado. '}Esta acción no se puede deshacer. Si solo quieres ocultarlo, usa <b>Archivar</b>.</>,
+    texto: <>Se borra <b>definitivamente</b> el pedido de {o.cliente_nombre} ({cop(o.total)}) y su historial; el stock reservado se devuelve solo. Esta acción no se puede deshacer. Si solo quieres ocultarlo, usa <b>Archivar</b>.</>,
     onOk: async () => {
-      await liberarStock(o)
       const { error } = await supabase.from('pedidos').delete().eq('id', o.id)
       if (error) { toast(error.message, 'err'); return false }
       setPedidos((l) => l.filter((x) => x.id !== o.id)); setDetalle(null); toast(`Pedido #${o.numero} eliminado`)

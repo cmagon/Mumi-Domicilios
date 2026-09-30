@@ -38,9 +38,6 @@ export default function PedidoManual() {
     if (error || !ped) { toast(error?.message ?? 'No se pudo crear el pedido', 'err'); return false }
     const { error: e2 } = await supabase.from('pedido_items').insert(validos.map((i) => ({ ...i, pedido_id: ped.id, precio_unitario: precio(i.producto_id) })))
     if (e2) { toast(e2.message, 'err'); return false }
-    // Reserva stock del día de entrega (forzado: los pedidos manuales pueden exceder el excedente)
-    for (const i of validos)
-      await supabase.rpc('reservar_stock', { p_fecha: f.fecha, p_producto: i.producto_id, p_cantidad: i.cantidad, p_forzar: true })
     toast(`Pedido #${ped.numero} creado`)
     setItems([{ producto_id: '', cantidad: 1 }]); setF({ ...f, nombre: '', tel: '', nota: '', direccion: '', hora: '' }); setErr({})
   }

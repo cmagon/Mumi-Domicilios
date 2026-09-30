@@ -7,7 +7,7 @@ type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: strin
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio',
   'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min',
-  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'logo_url']
+  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'logo_url']
 
 export default function Configuracion() {
   const toast = useToast()
@@ -147,6 +147,8 @@ export default function Configuracion() {
       <div className="card"><h2>Operación</h2>
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />
         <label>Franjas horarias de entrega (separadas por coma)</label><input value={f.franjas_entrega ?? ''} onChange={(e) => set('franjas_entrega', e.target.value)} />
+        <label>Pedidos para el mismo día: minutos de anticipación antes del cierre de entregas (por defecto 60)</label>
+        <input type="number" min={0} value={f.anticipacion_minima_min ?? '60'} onChange={(e) => set('anticipacion_minima_min', e.target.value)} />
         <label>Números admin autorizados (WhatsApp, separados por coma)</label><input value={f.admin_numeros ?? ''} onChange={(e) => set('admin_numeros', e.target.value)} />
         <label>Horas de atención humana antes de que el bot se reactive solo (por defecto 12)</label><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
         <label>Número del domiciliario (WhatsApp, con indicativo, ej. 573001234567)</label><input value={f.domiciliario_numero ?? ''} onChange={(e) => set('domiciliario_numero', e.target.value)} />
