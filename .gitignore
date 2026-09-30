@@ -1,2 +1,4 @@
 node_modules
 .env
+bot-tests/.out.mjs
+bot-tests/node_modules

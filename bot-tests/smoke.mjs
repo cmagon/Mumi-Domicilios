@@ -1,0 +1,45 @@
+// Prueba de humo del webhook del bot: lo compila, le envía un mensaje firmado de WhatsApp con Supabase, Gemini y WhatsApp simulados,
+// y verifica que el cliente recibe respuesta. Detecta errores que la compilación no ve (p. ej. variables usadas antes de declararse).
+import { createHmac } from 'node:crypto'
+import { build } from 'esbuild'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import assert from 'node:assert'
+
+const aqui = path.dirname(fileURLToPath(import.meta.url))
+const out = path.join(aqui, '.out.mjs')
+await build({ entryPoints: [path.join(aqui, '../supabase/functions/whatsapp-webhook/index.ts')], bundle: true, format: 'esm', platform: 'node', outfile: out,
+  alias: { 'npm:@supabase/supabase-js@2': path.join(aqui, 'fake-supabase.mjs') }, logLevel: 'error' })
+
+const env = { SUPABASE_URL: 'http://x', SUPABASE_SERVICE_ROLE_KEY: 'k', WHATSAPP_APP_SECRET: 'sec', WHATSAPP_TOKEN: 't', WHATSAPP_PHONE_ID: '1', WHATSAPP_VERIFY_TOKEN: 'v' }
+let handler; const tareas = []; const enviados = []
+let modeloVacio = false
+globalThis.Deno = { env: { get: (k) => env[k] }, serve: (h) => { handler = h } }
+globalThis.EdgeRuntime = { waitUntil: (p) => tareas.push(p) }
+globalThis.fetch = async (url, init) => {
+  const u = String(url)
+  if (u.includes('graph.facebook.com')) { enviados.push(JSON.parse(init.body)); return new Response(JSON.stringify({ messages: [{ id: 'wamid.OUT' + enviados.length }] })) }
+  if (u.includes('generativelanguage')) return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: modeloVacio ? '' : 'Hola 😊\n\n¿Cuántas quieres?' }] } }] }))
+  return new Response('{}')
+}
+await import(out)
+
+async function enviar(texto, id) {
+  enviados.length = 0
+  const body = JSON.stringify({ entry: [{ changes: [{ value: { contacts: [{ wa_id: '573111', profile: { name: 'Ana' } }], messages: [{ id, from: '573111', type: 'text', text: { body: texto } }] } }] }] })
+  const sig = 'sha256=' + createHmac('sha256', 'sec').update(body).digest('hex')
+  const r = await handler(new Request('http://x/', { method: 'POST', headers: { 'x-hub-signature-256': sig }, body }))
+  await Promise.all(tareas.splice(0))
+  return { status: r.status, textos: enviados.filter((m) => m.type === 'text').map((m) => m.text.body) }
+}
+
+// 1) Flujo normal: el cliente escribe y recibe la respuesta del modelo, en mensajes cortos
+let r = await enviar('hola quiero una de limon', 'w1')
+assert.equal(r.status, 200)
+assert.deepEqual(r.textos, ['Hola 😊', '¿Cuántas quieres?'], `respuesta inesperada: ${JSON.stringify(r.textos)}`)
+
+// 2) El modelo devuelve vacío: el cliente nunca se queda sin respuesta
+modeloVacio = true
+r = await enviar('hola', 'w1')
+assert.ok(r.textos.some((t) => t.includes('Dame un momento')), `sin mensaje de espera: ${JSON.stringify(r.textos)}`)
+console.log('✅ Pruebas de humo del bot: OK')
