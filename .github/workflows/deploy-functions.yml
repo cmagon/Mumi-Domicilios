@@ -12,6 +12,10 @@ jobs:
       PROJECT_REF: fqjvbzozrqsqyqagmvtv
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # Si la prueba de humo del bot falla, no se despliega
+      - run: cd bot-tests && npm install && npm test
       - uses: supabase/setup-cli@v1
         with: { version: latest }
       - run: supabase functions deploy --project-ref "$PROJECT_REF"

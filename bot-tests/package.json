@@ -1,0 +1,1 @@
+{ "name": "mumi-bot-tests", "private": true, "type": "module", "scripts": { "test": "node smoke.mjs" }, "devDependencies": { "esbuild": "^0.25.0" } }

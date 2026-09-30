@@ -156,10 +156,6 @@ async function manejar(msg: any, nombreWA?: string) {
   }
   const hoy = fechaBogota()
   const hora = new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true })
-  const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
-    `Días de producción: ${cfg.dias_produccion}. Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
-    (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
-    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido
   const pa = await pedidoActivo(sb, from)
   const resumenPedido = pa
     ? `\n[Pedido activo de este cliente] #${pa.numero} · estado ${pa.estado} · ${pa.pagado ? 'PAGADO' : 'sin pagar'} · método: ${pa.metodo_pago} · total $${pa.total} · ` +
@@ -167,6 +163,10 @@ async function manejar(msg: any, nombreWA?: string) {
       `${(pa.pedido_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(', ')}. ` +
       `Este pedido YA está creado y su cupo reservado: NO vuelvas a consultar disponibilidad para él ni cambies su fecha. Para cambios usa modificar_pedido (solo si el ticket no se ha impreso).`
     : ''
+  const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
+    `Días de producción: ${cfg.dias_produccion}. Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
+    (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
+    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'
