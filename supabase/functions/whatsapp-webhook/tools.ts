@@ -43,8 +43,13 @@ export const TOOLS: Tool[] = [
       nombre: { type: 'string' }, telefono_contacto: { type: 'string' }, metodo_pago: { type: 'string' },
       fecha_entrega: { type: 'string', description: 'YYYY-MM-DD' }, franja_horaria: { type: 'string' }, nota: { type: 'string' } },
       required: ['items', 'modalidad', 'nombre', 'telefono_contacto', 'metodo_pago', 'fecha_entrega'] } },
-  { name: 'notificar_humano', description: 'Escala la conversación a una persona y detiene el bot en este chat.',
-    parameters: { type: 'object', properties: { resumen: { type: 'string' } }, required: ['resumen'] } },
+  { name: 'notificar_humano', description: 'Escala la conversación a una persona y detiene el bot en este chat. ANTES de llamarla debes tener el nombre completo y el teléfono de contacto del cliente, y saber qué necesita; si falta algo, pídeselo primero.',
+    parameters: { type: 'object', properties: {
+      nombre: { type: 'string', description: 'Nombre completo del cliente' },
+      telefono_contacto: { type: 'string', description: 'Teléfono de contacto del cliente' },
+      motivo: { type: 'string', enum: ['pedido_grande_evento', 'personalizacion', 'queja_reclamo', 'otro'] },
+      resumen: { type: 'string', description: 'Qué necesita el cliente, con los detalles (cantidades, fecha, sabores, personalización, etc.)' } },
+      required: ['nombre', 'telefono_contacto', 'motivo', 'resumen'] } },
 ]
 
 export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): Promise<unknown> {
@@ -95,15 +100,16 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     }
     case 'crear_pedido': return await crearPedido(a, ctx)
     case 'notificar_humano': {
+      if (!a.nombre?.trim() || !a.telefono_contacto?.trim() || !a.resumen?.trim())
+        return { ok: false, error: 'Faltan datos: pide al cliente su nombre completo, teléfono de contacto y qué necesita, y vuelve a llamar.' }
       await sb.from('conversaciones').upsert({ telefono: ctx.telefono, humano: true, actualizado_en: new Date().toISOString() })
       ctx.humano = true
+      const motivos: Record<string, string> = { pedido_grande_evento: 'Pedido grande o evento', personalizacion: 'Personalización',
+        queja_reclamo: 'Queja o reclamo', otro: 'Otro' }
+      const motivo = motivos[a.motivo] ?? 'Otro'
       for (const n of (cfg.admin_numeros ?? '').split(',').map((s) => s.replace(/\D/g, '')).filter(Boolean))
-        await notify(n, { templateEnv: 'WA_TEMPLATE_ADMIN', params: [ctx.telefono, a.resumen],
-          text: `⚠️ Atención humana requerida
-Cliente: ${ctx.telefono}
-${a.resumen}
-
-Escríbele desde tu WhatsApp. Para reactivar el bot: reanudar ${ctx.telefono}` })
+        await notify(n, { templateEnv: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen, ctx.telefono],
+          text: `⚠️ Atención humana requerida\nCliente: ${a.nombre}\nTeléfono: ${a.telefono_contacto}\nMotivo: ${motivo}\nDetalle: ${a.resumen}\nChat: ${ctx.telefono}\n\nPara reactivar el bot: reanudar ${ctx.telefono}` })
       return { ok: true, instruccion: 'Avisa al cliente que en un momento le escribe alguien del equipo. No sigas respondiendo.' }
     }
   }
