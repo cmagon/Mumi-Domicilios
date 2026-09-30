@@ -16,7 +16,7 @@ Resumen de patrones típicos de ventas por WhatsApp (criterio propio del diseño
 | Comportamiento | Dónde vive |
 |---|---|
 | Tono, orden del flujo (saludo → catálogo → fotos → pregunta), tipos de apertura, ortografía, cuándo escalar, frase de "no puedo ayudar" con el número de atención | Prompt (editable) |
-| Fotos en el punto exacto: el bot escribe `[[FOTOS]]` y el sistema las envía ahí | Prompt + código |
+| Fotos solo si el cliente acepta; el bot escribe `[[FOTOS]]` y el sistema las envía ahí | Prompt + código |
 | "Escribiendo…", visto azul y pausa proporcional al largo de cada mensaje; respuestas en varios mensajes cortos | Código; se ajusta en Configuración |
 | Esperar unos segundos por si el cliente sigue escribiendo y responder todo junto | Código; Configuración |
 | Recordatorios si el cliente no responde (comprobante, dirección…): a los 45 min y a las 6 h, solo de 7:00 a 20:00 y dentro de la ventana de 24 h | Función `seguimientos` + herramienta `marcar_pendiente`; Configuración |
