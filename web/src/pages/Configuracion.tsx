@@ -32,7 +32,7 @@ export default function Configuracion() {
 
   const set = (k: string, v: string) => setF({ ...f, [k]: v })
   const guardarTodo = async () => {
-    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio', 'modelo_ia', 'logo_url'])
+    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio', 'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min', 'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'logo_url'])
       if ((f[k] ?? '') !== (cfg[k] ?? '')) await save(k, f[k] ?? '')
     setMsg('Guardado'); loadH()
   }
@@ -88,6 +88,25 @@ export default function Configuracion() {
         {hist.length > 0 && <details><summary>Historial de versiones</summary>
           {hist.map((h) => (<div key={h.id} className="row"><span className="muted">{new Date(h.cambiado_en).toLocaleString()}</span>
             <button className="sec sm" onClick={() => set('system_prompt', h.valor_anterior)}>Restaurar</button></div>))}</details>}
+      </div>
+      <div className="card"><h2>Comportamiento natural y seguimiento</h2>
+        <label>Número de atención personalizada (el bot lo da cuando no puede ayudar; ej. 573001234567)</label>
+        <input value={f.numero_atencion ?? ''} onChange={(e) => set('numero_atencion', e.target.value)} />
+        <label>Simular "escribiendo…" y pausas entre mensajes</label>
+        <select value={f.simular_escritura ?? 'si'} onChange={(e) => set('simular_escritura', e.target.value)}><option value="si">Sí</option><option value="no">No</option></select>
+        <label>Velocidad de escritura (milisegundos por carácter; más alto = más lento)</label>
+        <input type="number" min={5} value={f.velocidad_escritura_ms ?? '35'} onChange={(e) => set('velocidad_escritura_ms', e.target.value)} />
+        <label>Segundos de espera antes de responder, por si el cliente sigue escribiendo (0 = responder ya)</label>
+        <input type="number" min={0} value={f.espera_agrupar_seg ?? '4'} onChange={(e) => set('espera_agrupar_seg', e.target.value)} />
+        <label>Recordatorios automáticos si el cliente no responde</label>
+        <select value={f.seguimiento_activo ?? 'si'} onChange={(e) => set('seguimiento_activo', e.target.value)}><option value="si">Activados</option><option value="no">Desactivados</option></select>
+        <div className="row">
+          <div><label>1.er recordatorio (minutos)</label><input type="number" min={5} value={f.seguimiento_1_min ?? '45'} onChange={(e) => set('seguimiento_1_min', e.target.value)} /></div>
+          <div><label>2.º y último (minutos)</label><input type="number" min={5} value={f.seguimiento_2_min ?? '360'} onChange={(e) => set('seguimiento_2_min', e.target.value)} /></div></div>
+        <div className="row">
+          <div><label>Enviar desde (hora)</label><input type="number" min={0} max={23} value={f.horario_inicio ?? '7'} onChange={(e) => set('horario_inicio', e.target.value)} /></div>
+          <div><label>Hasta (hora)</label><input type="number" min={1} max={24} value={f.horario_fin ?? '20'} onChange={(e) => set('horario_fin', e.target.value)} /></div></div>
+        <p className="muted">WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</p>
       </div>
       <div className="card"><h2>Operación</h2>
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />

@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.notificar-listo]
 verify_jwt = false
+
+[functions.seguimientos]
+verify_jwt = false

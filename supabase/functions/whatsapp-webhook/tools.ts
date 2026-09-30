@@ -1,7 +1,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import type { Tool, Provider } from './ai.ts'
 import { leerComprobante } from './ai.ts'
-import { notify, sendImage } from './wa.ts'
+import { notify } from './wa.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -24,11 +24,14 @@ export function proximaProduccion(desde: string, dias: string, incluirHoy: boole
 export type Ctx = {
   sb: SupabaseClient; cfg: Record<string, string>; telefono: string; prov: Provider
   comprobantePath?: string | null; comprobanteOk?: boolean; referencia?: string | null; humano?: boolean
+  fotos?: { link: string; caption: string }[]; pendiente?: string | null; pedidoCreado?: boolean
 }
 
 export const TOOLS: Tool[] = [
-  { name: 'consultar_catalogo', description: 'Lista los sabores activos con descripción y precio, y envía sus fotos al cliente por WhatsApp.',
+  { name: 'consultar_catalogo', description: 'Lista los sabores activos con descripción y precio. Deja listas las fotos para enviarlas al cliente en el punto donde escribas [[FOTOS]] en tu respuesta.',
     parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean' } } } },
+  { name: 'marcar_pendiente', description: 'Registra qué está esperando el bot del cliente (comprobante de pago, dirección, sabores/cantidad, confirmación del total). Si el cliente no responde, el sistema le enviará un recordatorio.',
+    parameters: { type: 'object', properties: { que: { type: 'string', description: 'Qué falta, con detalle (ej. comprobante de $34.000 por Nequi)' } }, required: ['que'] } },
   { name: 'consultar_stock', description: 'Stock disponible: cupo de hoy (solo si hoy es día de producción) y próximo día de producción.',
     parameters: { type: 'object', properties: { fecha: { type: 'string', description: 'YYYY-MM-DD opcional' } } } },
   { name: 'consultar_tarifa_domicilio', description: 'Tarifas de domicilio activas.', parameters: { type: 'object', properties: {} } },
@@ -59,7 +62,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     case 'consultar_catalogo': {
       const { data } = await sb.from('productos').select('nombre,descripcion,precio,foto_url').eq('activo', true).order('nombre')
       if (a.enviar_fotos !== false)
-        for (const p of data ?? []) if (p.foto_url) await sendImage(ctx.telefono, p.foto_url, `${p.nombre} — $${p.precio}`)
+        ctx.fotos = (data ?? []).filter((p) => p.foto_url).map((p) => ({ link: p.foto_url as string, caption: `${p.nombre} — $${p.precio}` }))
       return (data ?? []).map(({ nombre, descripcion, precio }) => ({ nombre, descripcion, precio }))
     }
     case 'consultar_stock': {
@@ -98,7 +101,12 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       ctx.comprobanteOk = true; ctx.referencia = r.referencia
       return { ok: true, monto: r.monto, referencia: r.referencia }
     }
-    case 'crear_pedido': return await crearPedido(a, ctx)
+    case 'marcar_pendiente': ctx.pendiente = String(a.que ?? '').slice(0, 300); return { ok: true }
+    case 'crear_pedido': {
+      const r = await crearPedido(a, ctx) as { ok?: boolean }
+      if (r.ok) { ctx.pedidoCreado = true; ctx.pendiente = null }
+      return r
+    }
     case 'notificar_humano': {
       if (!a.nombre?.trim() || !a.telefono_contacto?.trim() || !a.resumen?.trim())
         return { ok: false, error: 'Faltan datos: pide al cliente su nombre completo, teléfono de contacto y qué necesita, y vuelve a llamar.' }
