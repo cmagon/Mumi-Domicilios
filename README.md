@@ -41,3 +41,9 @@ set -a; . ./.env; set +a; npm start
 ## Despliegue web (sin CLI)
 - Las Edge Functions se despliegan solas desde GitHub Actions (`.github/workflows/deploy-functions.yml`) al hacer merge en `main`. Requiere el secret de GitHub `SUPABASE_ACCESS_TOKEN` (Supabase → Account → Access Tokens).
 - Los secrets del bot se cargan en Supabase → Edge Functions → Secrets. Plantillas de WhatsApp: `docs/whatsapp-plantillas.md`.
+
+## Proveedores de IA, audio y alertas
+- Proveedor de chat: Gemini / Claude / OpenAI (Configuración). Cada uno tiene su propia API key (guardada como secreto `key_<proveedor>`).
+- Motor de audio: Gemini u OpenAI (Whisper), independiente del proveedor de chat.
+- Botón **Probar IA** en Configuración (función `probar-ia`).
+- Errores de IA (saldo/límite, clave, audio) se guardan en `alertas_ia`, se muestran como banner rojo en el micrositio y se avisan por WhatsApp (solo dentro de la ventana de 24 h) y, si configuras los secrets `RESEND_API_KEY` y `ALERT_EMAIL_TO`, por correo. No se repite el mismo tipo de aviso antes de 30 min.

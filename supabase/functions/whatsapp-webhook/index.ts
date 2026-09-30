@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { chat, modeloPorDefecto, transcribir, type Provider, type Turn } from './ai.ts'
+import { chat, transcribir, type Provider, type Turn } from './ai.ts'
+import { registrarAlerta } from './alerts.ts'
+import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, sendText, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, type Ctx } from './tools.ts'
 
@@ -11,13 +13,6 @@ const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SE
 async function cargarConfig() {
   const { data } = await sb.from('config').select('clave,valor')
   return Object.fromEntries((data ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
-}
-
-async function proveedor(cfg: Record<string, string>): Promise<Provider> {
-  const { data } = await sb.from('config_secretos').select('valor').eq('clave', 'ia_api_key').maybeSingle()
-  if (!data) throw new Error('API key de IA no configurada')
-  const p = cfg.proveedor_ia === 'openai' ? 'openai' : 'claude'
-  return { proveedor: p, apiKey: data.valor, modelo: cfg.modelo_ia || modeloPorDefecto(p) }
 }
 
 async function comandoAdmin(from: string, texto: string, cfg: Record<string, string>): Promise<boolean> {
@@ -80,11 +75,19 @@ async function manejar(msg: any) {
   try {
     if (msg.type === 'text') texto = msg.text.body
     else if (msg.type === 'audio') {
-      const { bytes, mime } = await downloadMedia(msg.audio.id)
-      const sttKey = Deno.env.get('OPENAI_API_KEY') ?? (cfg.proveedor_ia === 'openai'
-        ? (await sb.from('config_secretos').select('valor').eq('clave', 'ia_api_key').maybeSingle()).data?.valor : null)
-      if (!sttKey) { await sendText(from, 'Por ahora no puedo escuchar audios, ¿me lo escribes? 🙏'); return }
-      texto = await transcribir(sttKey, bytes, mime)
+      const motor = cfg.motor_audio === 'openai' ? 'openai' : 'gemini'
+      const key = await apiKey(sb, cfg, motor)
+      if (!key) {
+        await registrarAlerta(sb, cfg, 'audio', `Falta la API key de ${motor} para transcribir audios`)
+        await sendText(from, 'Por ahora no puedo escuchar audios, ¿me lo escribes? 🙏'); return
+      }
+      try {
+        const { bytes, mime } = await downloadMedia(msg.audio.id)
+        texto = await transcribir(motor, key, bytes, mime, cfg.modelo_ia && cfg.proveedor_ia === 'gemini' ? cfg.modelo_ia : undefined)
+      } catch (e) {
+        await registrarAlerta(sb, cfg, 'audio', String(e))
+        await sendText(from, 'No pude escuchar tu audio, ¿me lo escribes? 🙏'); return
+      }
     } else if (msg.type === 'image') {
       const { bytes, mime } = await downloadMedia(msg.image.id)
       comprobantePath = `${from}/${msg.id}.${mime.includes('png') ? 'png' : 'jpg'}`
@@ -112,7 +115,12 @@ async function manejar(msg: any) {
   const history: Turn[] = (hist ?? []).reverse().map((m) => ({ role: m.rol, content: m.contenido }))
   while (history.length && history[0].role !== 'user') history.shift()
 
-  const prov = await proveedor(cfg)
+  let prov: Provider
+  try { prov = await construirProveedor(sb, cfg) }
+  catch (e) {
+    await registrarAlerta(sb, cfg, 'error', String(e))
+    await sendText(from, 'Dame un momento, en seguida te ayudo 🙏'); return
+  }
   const hoy = fechaBogota()
   const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}. Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}.`
@@ -120,7 +128,7 @@ async function manejar(msg: any) {
 
   let respuesta: string
   try { respuesta = await chat(prov, system, history, TOOLS, (n, a) => ejecutar(n, a, ctx)) }
-  catch (e) { console.error('ia', e); respuesta = 'Dame un momento, en seguida te ayudo 🙏'; }
+  catch (e) { console.error('ia', e); await registrarAlerta(sb, cfg, 'error', String(e)); respuesta = 'Dame un momento, en seguida te ayudo 🙏' }
   if (respuesta) {
     await sendText(from, respuesta)
     await sb.from('mensajes').insert({ telefono: from, rol: 'assistant', contenido: respuesta })
