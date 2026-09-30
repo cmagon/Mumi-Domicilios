@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../supabase'
 
 type N = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; telefono: string | null; leida: boolean; creado_en: string }
-const ICONO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦' }
-const ETIQUETA: Record<string, string> = { pago: 'Pago recibido', pago_revision: 'Revisar comprobante', atencion: 'Atención humana', sin_respuesta: 'El bot no pudo resolver', cambio: 'Pedido modificado', pedido_grande: 'Pedido grande' }
+const ICONO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪' }
+const ETIQUETA: Record<string, string> = { pago: 'Pago recibido', pago_revision: 'Revisar comprobante', atencion: 'Atención humana', sin_respuesta: 'El bot no pudo resolver', cambio: 'Pedido modificado', pedido_grande: 'Pedido grande', sin_stock: 'Sin stock' }
 
 export default function Avisos() {
   const [items, setItems] = useState<N[]>([])

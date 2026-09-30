@@ -4,7 +4,7 @@ import { cop } from '../hooks'
 import type { Producto } from '../types'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
-const VACIO = { id: '', nombre: '', descripcion: '', precio: '', foto_url: '' as string | null, activo: true }
+const VACIO = { id: '', nombre: '', descripcion: '', detalles: '', precio: '', foto_url: '' as string | null, activo: true }
 
 export default function Catalogo() {
   const toast = useToast()
@@ -20,7 +20,7 @@ export default function Catalogo() {
 
   const abrir = (p?: Producto) => {
     setErrores({}); setArchivo(null); setPrev(null)
-    setEd(p ? { id: p.id, nombre: p.nombre, descripcion: p.descripcion, precio: String(p.precio), foto_url: p.foto_url, activo: p.activo } : { ...VACIO })
+    setEd(p ? { id: p.id, nombre: p.nombre, descripcion: p.descripcion, detalles: p.detalles ?? '', precio: String(p.precio), foto_url: p.foto_url, activo: p.activo } : { ...VACIO })
   }
   const elegirFoto = (f: File | undefined) => { if (!f) return; setArchivo(f); setPrev(URL.createObjectURL(f)) }
 
@@ -36,7 +36,7 @@ export default function Catalogo() {
       if (error) { toast(error.message, 'err'); return false }
       foto_url = supabase.storage.from('catalogo').getPublicUrl(path).data.publicUrl
     }
-    const fila = { nombre: ed.nombre.trim(), descripcion: ed.descripcion, precio: Number(ed.precio), foto_url, activo: ed.activo }
+    const fila = { nombre: ed.nombre.trim(), descripcion: ed.descripcion, detalles: ed.detalles.trim(), precio: Number(ed.precio), foto_url, activo: ed.activo }
     const { error } = ed.id ? await supabase.from('productos').update(fila).eq('id', ed.id) : await supabase.from('productos').insert(fila)
     if (error) { toast(error.message, 'err'); return false }
     toast(ed.id ? 'Sabor actualizado' : 'Sabor creado'); await load(); setTimeout(() => setEd(null), 450)
@@ -76,6 +76,7 @@ export default function Catalogo() {
               <b>{p.nombre}</b>
               <span className="precio">{cop(p.precio)}</span>
               <span className="desc">{p.descripcion || 'Sin descripción'}</span>
+              {p.detalles ? <span className="desc" title={p.detalles}>ℹ️ {p.detalles.length > 70 ? p.detalles.slice(0, 70) + '…' : p.detalles}</span> : <span className="desc" style={{ color: '#b07a00' }}>⚠️ Sin detalles específicos</span>}
               <div className="pie">
                 <Switch checked={p.activo} onChange={(v) => alternar(p, v)} />
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -95,6 +96,8 @@ export default function Catalogo() {
         {ed && <>
           <label>Nombre *</label><input className={errores.nombre ? 'invalido' : ''} autoFocus value={ed.nombre} onChange={(e) => setEd({ ...ed, nombre: e.target.value })} />
           <label>Descripción</label><input value={ed.descripcion} onChange={(e) => setEd({ ...ed, descripcion: e.target.value })} />
+          <label>Detalles específicos (ingredientes, alérgenos, tamaño, conservación…)</label>
+          <textarea style={{ minHeight: 90 }} placeholder="El bot solo afirma lo que escribas aquí; si falta un dato, dirá que lo confirma con el equipo." value={ed.detalles} onChange={(e) => setEd({ ...ed, detalles: e.target.value })} />
           <label>Precio (COP) *</label><input className={errores.precio ? 'invalido' : ''} type="number" min={0} value={ed.precio} onChange={(e) => setEd({ ...ed, precio: e.target.value })} />
           <label>Foto (alta calidad)</label>
           {(prev || ed.foto_url) && <img className="thumb" style={{ width: 96, height: 96, marginBottom: 6 }} src={prev ?? ed.foto_url ?? ''} alt="foto" />}

@@ -117,10 +117,10 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
   const dias = cfg.dias_produccion ?? ''
   switch (name) {
     case 'consultar_catalogo': {
-      const { data } = await sb.from('productos').select('nombre,descripcion,precio,foto_url').eq('activo', true).order('nombre')
+      const { data } = await sb.from('productos').select('nombre,descripcion,detalles,precio,foto_url').eq('activo', true).order('nombre')
       if (a.enviar_fotos === true)
         ctx.fotos = (data ?? []).filter((p) => p.foto_url).map((p) => ({ link: p.foto_url as string, caption: `${p.nombre} — $${p.precio}` }))
-      return (data ?? []).map(({ nombre, descripcion, precio }) => ({ nombre, descripcion, precio }))
+      return (data ?? []).map(({ nombre, descripcion, detalles, precio }) => ({ nombre, descripcion, detalles: detalles || null, precio, nota: 'Solo puedes afirmar lo que dicen descripcion y detalles; si falta un dato, no lo inventes.' }))
     }
     case 'consultar_stock': {
       const hoy = fechaBogota()
@@ -168,8 +168,10 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         motivo_no_es_hoy: modoHoy ? null : (hoySeAcaboTodo ? 'hoy ya se acabaron todas las galletas' : motivoNoHoy), franjas_entrega: cfg.franjas_entrega,
         sabores_disponibles_para_esa_fecha: sabores.filter((x) => x.disponible),
         sabores_que_no_alcanzan_para_esa_fecha: faltantes,
-        de_esos_se_pueden_agendar_para_la_siguiente_fecha: agendables, sin_stock_para_ninguna_fecha_por_ahora: sinStock,
-        nota: 'Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado".',
+        de_esos_se_pueden_agendar_para_la_siguiente_fecha: agendables, sin_stock_por_ahora: sinStock,
+        proxima_produccion: (modoHoy ? proxima : fecha) ? { fecha: modoHoy ? proxima : fecha, cuando_decirlo: etiqueta((modoHoy ? proxima : fecha) as string) } : null,
+        reserva_sin_stock_permitida: cfg.permitir_reserva_sin_stock !== 'no',
+        nota: 'Si el cliente quiere un sabor que está en sin_stock_por_ahora NO pierdas la venta: dile que se producirán más para proxima_produccion y ofrécele dejárselo reservado (si reserva_sin_stock_permitida) o avisarle; llama registrar_agotado. Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado".',
       }
     }
     case 'consultar_tarifa_domicilio': {
@@ -179,6 +181,11 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     case 'registrar_agotado': {
       const { data: p } = await sb.from('productos').select('id').ilike('nombre', `%${a.sabor}%`).limit(1).maybeSingle()
       await sb.from('demanda_insatisfecha').insert({ fecha: a.fecha ?? fechaBogota(), producto_id: p?.id ?? null, cantidad: a.cantidad ?? 1, telefono: ctx.telefono })
+      // Avisa al admin (una vez por cliente y sabor cada 12 h) para que sepa que hay demanda sin stock
+      const titulo = `Cliente pidió sin stock: ${a.cantidad ?? 1} × ${a.sabor}`
+      const { count } = await sb.from('notificaciones').select('id', { count: 'exact', head: true }).eq('telefono', ctx.telefono).eq('titulo', titulo)
+        .gte('creado_en', new Date(Date.now() - 12 * 3600 * 1000).toISOString())
+      if (!count) await avisar(sb, 'sin_stock', titulo, 'El bot le informó que se producirán más y le ofreció reservar/avisarle.', null, ctx.telefono)
       return { ok: true }
     }
     case 'consultar_medios_pago': {
@@ -326,13 +333,17 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const pedidas = new Map<string, number>()
   items.forEach((i) => pedidas.set(i.producto_id, (pedidas.get(i.producto_id) ?? 0) + i.cantidad))
   const filas = ((await sb.rpc('stock_resumen', { p_fecha: fecha })).data ?? []) as any[]
+  const permitirReserva = cfg.permitir_reserva_sin_stock !== 'no' && fecha > hoy
+  const faltas: string[] = []
   for (const [pid, cant] of pedidas) {
     const r = filas.find((x) => x.producto_id === pid)
     const disponibles = fecha === hoy ? (r?.horneado_registrado ? Number(r.extras_dia) : 0) : Number(r?.disponible_general ?? 0)
     if (cant > disponibles) {
       const nombre = items.find((i) => i.producto_id === pid)!.nombre
       await sb.from('demanda_insatisfecha').insert({ fecha, producto_id: pid, cantidad: cant - disponibles, telefono: ctx.telefono })
-      return { ok: false, sin_stock: true, sabor: nombre, disponibles, error: `Solo ${disponibles === 0 ? 'no quedan' : 'quedan ' + disponibles} de ${nombre} ${fecha === hoy ? 'para hoy' : 'disponibles para agendar'}. Ofrece lo que hay o consulta la siguiente fecha con consultar_stock.` }
+      if (!permitirReserva)
+        return { ok: false, sin_stock: true, sabor: nombre, disponibles, error: `Solo ${disponibles === 0 ? 'no quedan' : 'quedan ' + disponibles} de ${nombre} ${fecha === hoy ? 'para hoy' : 'disponibles para agendar'}. Ofrece lo que hay o consulta la siguiente fecha con consultar_stock.` }
+      faltas.push(`${cant - disponibles} × ${nombre}`)
     }
   }
   const total = items.reduce((s, i) => s + i.precio * i.cantidad, 0) + tarifa
@@ -347,14 +358,16 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
     ubic = { lat: cv?.ultima_lat, lng: cv?.ultima_lng }
   }
   const { data: ped, error } = await sb.from('pedidos').insert({
-    chat_telefono: ctx.telefono, hora_entrega_solicitada: horaPedida, direccion_aprox: !!a.ubicacion_compartida, lat: ubic.lat ?? null, lng: ubic.lng ?? null,
+    chat_telefono: ctx.telefono, pendiente_produccion: faltas.length > 0, hora_entrega_solicitada: horaPedida, direccion_aprox: !!a.ubicacion_compartida, lat: ubic.lat ?? null, lng: ubic.lng ?? null,
     cliente_nombre: a.nombre, cliente_telefono: a.telefono_contacto, origen: 'bot', metodo_pago: a.metodo_pago,
     estado: efectivo ? 'pendiente_cobro' : 'pago_verificado', pagado: pagoOk, modalidad: a.modalidad, direccion: a.direccion ?? null,
     tarifa_domicilio: tarifa, total, nota: a.nota ?? null, fecha_entrega: fecha, franja_horaria: a.franja_horaria ?? null,
     comprobante_url: pagoOk ? ctx.comprobantePath : null, referencia_pago: pagoOk ? ctx.referencia : null,
   }).select('id,numero').single()
   if (error || !ped) return { ok: false, error: error?.message }
+  if (faltas.length) await avisar(sb, 'sin_stock', `Reserva sin stock — pedido #${ped.numero}`, `Faltan por producir para ${fecha}: ${faltas.join(', ')}`, ped.id, ctx.telefono)
   if (pagoOk) await avisar(sb, 'pago', `Pago recibido — pedido #${ped.numero}`, `$${total} (validado automáticamente)`, ped.id, ctx.telefono)
   await sb.from('pedido_items').insert(items.map((i) => ({ pedido_id: ped.id, producto_id: i.producto_id, cantidad: i.cantidad, precio_unitario: i.precio })))
-  return { ok: true, numero_pedido: ped.numero, total, cobrar_en_entrega: efectivo ? total : 0, fecha_entrega: fecha }
+  return { ok: true, numero_pedido: ped.numero, total, cobrar_en_entrega: efectivo ? total : 0, fecha_entrega: fecha,
+    ...(faltas.length ? { pendiente_de_produccion: true, aviso: 'Parte del pedido se producirá para esa fecha: díselo con naturalidad (queda reservado y el equipo lo fabrica).' } : {}) }
 }
