@@ -46,7 +46,7 @@ export type Ctx = {
 }
 
 export const TOOLS: Tool[] = [
-  { name: 'consultar_catalogo', description: 'Lista los sabores activos con descripción y precio. Deja listas las fotos para enviarlas al cliente en el punto donde escribas [[FOTOS]] en tu respuesta.',
+  { name: 'consultar_catalogo', description: 'Lista los sabores activos con descripción y precio. Con enviar_fotos=true deja listas las fotos para enviarlas en el punto donde escribas [[FOTOS]]; úsalo SOLO si el cliente aceptó que se las envíes.',
     parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean' } } } },
   { name: 'marcar_pendiente', description: 'Registra qué está esperando el bot del cliente (comprobante de pago, dirección, sabores/cantidad, confirmación del total). Si el cliente no responde, el sistema le enviará un recordatorio.',
     parameters: { type: 'object', properties: { que: { type: 'string', description: 'Qué falta, con detalle (ej. comprobante de $34.000 por Nequi)' } }, required: ['que'] } },
@@ -79,7 +79,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
   switch (name) {
     case 'consultar_catalogo': {
       const { data } = await sb.from('productos').select('nombre,descripcion,precio,foto_url').eq('activo', true).order('nombre')
-      if (a.enviar_fotos !== false)
+      if (a.enviar_fotos === true)
         ctx.fotos = (data ?? []).filter((p) => p.foto_url).map((p) => ({ link: p.foto_url as string, caption: `${p.nombre} — $${p.precio}` }))
       return (data ?? []).map(({ nombre, descripcion, precio }) => ({ nombre, descripcion, precio }))
     }
