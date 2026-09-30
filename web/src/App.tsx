@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Route, Routes, Navigate } from 'react-router-dom'
+import { NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { useConfig } from './hooks'
@@ -14,6 +14,7 @@ import Kpis from './pages/Kpis'
 import Clientes from './pages/Clientes'
 import Avisos from './pages/Avisos'
 import AlertaIA from './AlertaIA'
+import { ToastProvider } from './ui'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
 
@@ -21,6 +22,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [esAdmin, setEsAdmin] = useState<boolean | null>(null)
   const { cfg } = useConfig()
+  const loc = useLocation()
   const [noLeidos, setNoLeidos] = useState(0)
 
   // Avisos del bot (pagos, atención humana, cosas que no pudo resolver): contador en vivo + notificación del navegador
@@ -71,7 +73,7 @@ export default function App() {
   const tabs: [string, string][] = [['/', 'Producción'], ['/avisos', noLeidos ? `Avisos 🔴${noLeidos}` : 'Avisos'], ['/pedidos', 'Pedidos'], ['/manual', 'Pedido manual'],
     ['/clientes', 'Clientes'], ['/catalogo', 'Catálogo'], ['/tarifas', 'Tarifas'], ['/config', 'Configuración'], ['/kpis', 'KPIs']]
   return (
-    <>
+    <ToastProvider>
       <header className="top">
         {cfg.logo_url && <img src={cfg.logo_url} alt="Mumi" />}
         <h1>Mumi Delivery</h1>
@@ -81,7 +83,7 @@ export default function App() {
       <nav className="tabs">
         {tabs.map(([to, l]) => <NavLink key={to} to={to} end={to === '/'}>{l}</NavLink>)}
       </nav>
-      <main>
+      <main key={loc.pathname}>
         <Routes>
           <Route path="/" element={<Produccion />} />
           <Route path="/avisos" element={<Avisos />} />
@@ -95,6 +97,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
-    </>
+    </ToastProvider>
   )
 }

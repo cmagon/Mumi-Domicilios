@@ -6,10 +6,15 @@ const cop = (n) => '$' + Number(n).toLocaleString('es-CO')
 export function lineas(o, ancho = 32) {
   const sep = '-'.repeat(ancho)
   const efectivo = /efectivo/i.test(o.metodo_pago ?? '') && !o.pagado
-  const out = [{ t: `PEDIDO #${o.numero}`, big: true, center: true }, { t: sep },
+  const fecha = o.fecha_entrega ? new Date(o.fecha_entrega + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short' }) : 'sin fecha'
+  const hora = (h) => { const [a, b] = h.split(':').map(Number); return `${a % 12 || 12}:${String(b).padStart(2, '0')} ${a >= 12 ? 'PM' : 'AM'}` }
+  const out = [{ t: `PEDIDO #${o.numero}`, big: true, center: true },
+    { t: `ENTREGAR ${fecha}`.toUpperCase(), big: true, center: true },
+    ...(o.hora_entrega_solicitada ? [{ t: `HORA PEDIDA: ${hora(o.hora_entrega_solicitada)}`, big: true, center: true }]
+      : o.franja_horaria ? [{ t: `FRANJA: ${o.franja_horaria}`, bold: true, center: true }] : []),
+    { t: sep },
     { t: o.cliente_nombre, bold: true }, { t: `Tel: ${o.cliente_telefono}` },
     { t: o.modalidad === 'domicilio' ? `${o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida)' : 'DOMICILIO'}: ${o.direccion ?? ''}` : 'RECOGE EN PUNTO' }]
-  if (o.fecha_entrega) out.push({ t: `Entrega: ${o.fecha_entrega} ${o.franja_horaria ?? ''}` })
   out.push({ t: sep })
   for (const i of o.pedido_items ?? []) out.push({ t: `${i.cantidad} x ${i.productos?.nombre ?? ''}`, bold: true })
   out.push({ t: sep }, { t: `TOTAL: ${cop(o.total)}`, bold: true })

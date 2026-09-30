@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
+import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
-type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string }
+type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string; activo: boolean }
 type H = { id: string; valor_anterior: string; cambiado_en: string }
+const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio',
+  'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min',
+  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'logo_url']
 
 export default function Configuracion() {
+  const toast = useToast()
   const { cfg, save } = useConfig()
   const [f, setF] = useState<Record<string, string>>({})
   const [metodos, setMetodos] = useState<M[]>([])
   const [hist, setHist] = useState<H[]>([])
   const [keys, setKeys] = useState<Record<string, string>>({ claude: '', openai: '', gemini: '' })
   const [tiene, setTiene] = useState<Record<string, boolean>>({})
-  const [probando, setProbando] = useState(false)
   const [prueba, setPrueba] = useState<{ ok: boolean; texto: string } | null>(null)
-  const [msg, setMsg] = useState('')
+  const [ed, setEd] = useState<{ id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string } | null>(null)
+  const [err, setErr] = useState<Record<string, boolean>>({})
+  const [conf, setConf] = useState<Confirmacion | null>(null)
 
   const loadM = async () => { const { data } = await supabase.from('metodos_pago').select('*').order('nombre'); setMetodos(data ?? []) }
   const loadH = async () => {
@@ -31,41 +37,56 @@ export default function Configuracion() {
   }, [])
 
   const set = (k: string, v: string) => setF({ ...f, [k]: v })
+  const cambios = CLAVES.filter((k) => (f[k] ?? '') !== (cfg[k] ?? ''))
+
   const guardarTodo = async () => {
-    for (const k of ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'proveedor_ia', 'motor_audio', 'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min', 'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'logo_url'])
-      if ((f[k] ?? '') !== (cfg[k] ?? '')) await save(k, f[k] ?? '')
-    setMsg('Guardado'); loadH()
+    for (const k of cambios) await save(k, f[k] ?? '')
+    toast('Configuración guardada'); loadH()
   }
   const guardarKey = async (p: string) => {
-    if (!keys[p]) return
+    if (!keys[p]) { toast('Pega primero la API key', 'err'); return false }
     const { error } = await supabase.rpc('set_secreto', { p_clave: `key_${p}`, p_valor: keys[p] })
-    if (error) return setMsg(error.message)
-    setKeys({ ...keys, [p]: '' }); setTiene({ ...tiene, [p]: true }); setMsg(`API key de ${p} guardada`)
+    if (error) { toast(error.message, 'err'); return false }
+    setKeys({ ...keys, [p]: '' }); setTiene({ ...tiene, [p]: true }); toast(`API key de ${p} guardada`)
   }
   const probar = async () => {
-    setProbando(true); setPrueba(null)
+    setPrueba(null)
     const { data, error } = await supabase.functions.invoke('probar-ia')
-    setProbando(false)
-    if (error || !data) return setPrueba({ ok: false, texto: error?.message ?? 'Sin respuesta de la función (¿está desplegada?)' })
+    if (error || !data) { setPrueba({ ok: false, texto: error?.message ?? 'Sin respuesta de la función (¿está desplegada?)' }); return false }
     const audio = data.audio?.clave_configurada ? `Audio (${data.audio.motor}): clave lista` : `Audio (${data.audio?.motor}): FALTA la API key`
-    setPrueba(data.ok
-      ? { ok: true, texto: `Chat OK con ${data.proveedor} / ${data.modelo} (${data.ms} ms). ${audio}` }
-      : { ok: false, texto: `Chat con error: ${data.error}. ${audio}` })
+    setPrueba(data.ok ? { ok: true, texto: `Chat OK con ${data.proveedor} / ${data.modelo} (${data.ms} ms). ${audio}` } : { ok: false, texto: `Chat con error: ${data.error}. ${audio}` })
+    return data.ok as boolean
   }
   const logo = async (file: File) => {
     const path = `logo-${Date.now()}.${file.name.split('.').pop()}`
     const { error } = await supabase.storage.from('catalogo').upload(path, file, { contentType: file.type })
-    if (error) return setMsg(error.message)
-    set('logo_url', supabase.storage.from('catalogo').getPublicUrl(path).data.publicUrl)
+    if (error) return toast(error.message, 'err')
+    set('logo_url', supabase.storage.from('catalogo').getPublicUrl(path).data.publicUrl); toast('Logo cargado: guarda la configuración para aplicarlo', 'info')
   }
-  const updM = (id: string, p: Partial<M>) => setMetodos(metodos.map((m) => (m.id === id ? { ...m, ...p } : m)))
-  const saveM = async (m: M) => { const { id, ...r } = m; await supabase.from('metodos_pago').update(r).eq('id', id); setMsg('Método guardado') }
-  const addM = async () => { await supabase.from('metodos_pago').insert({ nombre: 'Nequi' }); loadM() }
-  const delM = async (id: string) => { await supabase.from('metodos_pago').delete().eq('id', id); loadM() }
+
+  // ---------- Métodos de pago: nombre y número obligatorios; el tipo es opcional ----------
+  const guardarMetodo = async () => {
+    if (!ed) return false
+    const e = { nombre: !ed.nombre.trim(), numero: !ed.numero_cuenta.trim() }
+    setErr(e)
+    if (e.nombre || e.numero) { toast('El nombre y el número son obligatorios', 'err'); return false }
+    const fila = { nombre: ed.nombre.trim(), numero_cuenta: ed.numero_cuenta.trim(), tipo_cuenta: ed.tipo_cuenta.trim() }
+    const { error } = ed.id ? await supabase.from('metodos_pago').update(fila).eq('id', ed.id) : await supabase.from('metodos_pago').insert(fila)
+    if (error) { toast(error.message, 'err'); return false }
+    toast(ed.id ? 'Método de pago actualizado' : 'Método de pago agregado'); await loadM(); setTimeout(() => setEd(null), 450)
+  }
+  const alternarMetodo = async (m: M, activo: boolean) => {
+    setMetodos((l) => l.map((x) => (x.id === m.id ? { ...x, activo } : x)))
+    const { error } = await supabase.from('metodos_pago').update({ activo }).eq('id', m.id)
+    if (error) { toast(error.message, 'err'); loadM() }
+  }
+  const borrarMetodo = (m: M) => setConf({ titulo: 'Eliminar método de pago', peligro: true, okText: 'Eliminar', texto: <>¿Eliminar <b>{m.nombre}</b>? El bot dejará de ofrecerlo.</>,
+    onOk: async () => { const { error } = await supabase.from('metodos_pago').delete().eq('id', m.id); if (error) { toast(error.message, 'err'); return false } toast('Método eliminado'); loadM() } })
+  const efectivo = (f.acepta_efectivo ?? cfg.acepta_efectivo ?? 'si') !== 'no'
+  const alternarEfectivo = async (v: boolean) => { setF((x) => ({ ...x, acepta_efectivo: v ? 'si' : 'no' })); await save('acepta_efectivo', v ? 'si' : 'no'); toast(v ? 'Efectivo contraentrega habilitado' : 'Efectivo contraentrega deshabilitado') }
 
   return (
     <>
-      <p className="muted">{msg}</p>
       <div className="card"><h2>Bot</h2>
         <label>Proveedor de IA (chat y lectura de comprobantes)</label>
         <select value={f.proveedor_ia ?? 'gemini'} onChange={(e) => set('proveedor_ia', e.target.value)}>
@@ -79,29 +100,41 @@ export default function Configuracion() {
           <div key={p}><label>API key de {p} {tiene[p] && <span className="badge ok">configurada</span>}</label>
             <div className="row"><input type="password" autoComplete="off" placeholder={tiene[p] ? '•••••••• (pegar para reemplazar)' : 'Pegar API key'}
               value={keys[p]} onChange={(e) => setKeys({ ...keys, [p]: e.target.value })} />
-              <button onClick={() => guardarKey(p)}>Guardar key</button></div></div>))}
-        <p className="muted">Guarda primero los cambios de arriba (botón "Guardar configuración") y luego prueba.</p>
-        <div className="row"><button className="sec" onClick={probar} disabled={probando}>{probando ? 'Probando…' : 'Probar IA'}</button></div>
+              <AsyncButton okText="Guardada" onClick={() => guardarKey(p)}>Guardar key</AsyncButton></div></div>))}
+        <p className="muted">Guarda primero los cambios (barra inferior) y luego prueba.</p>
+        <div className="row"><AsyncButton className="sec" okText="IA funcionando" onClick={probar}>Probar IA</AsyncButton></div>
         {prueba && <p className={prueba.ok ? 'muted' : 'err'}>{prueba.ok ? '✅ ' : '❌ '}{prueba.texto}</p>}
         <label>System prompt</label>
         <textarea value={f.system_prompt ?? ''} onChange={(e) => set('system_prompt', e.target.value)} />
         {hist.length > 0 && <details><summary>Historial de versiones</summary>
           {hist.map((h) => (<div key={h.id} className="row"><span className="muted">{new Date(h.cambiado_en).toLocaleString()}</span>
-            <button className="sec sm" onClick={() => set('system_prompt', h.valor_anterior)}>Restaurar</button></div>))}</details>}
+            <button className="sec sm" onClick={() => { set('system_prompt', h.valor_anterior); toast('Versión cargada: guarda para aplicarla', 'info') }}>Restaurar</button></div>))}</details>}
       </div>
+
+      <div className="card"><h2>Métodos de pago</h2>
+        <p className="muted">Solo estos medios (y el efectivo, si está habilitado) los ofrece el bot. Nombre y número son obligatorios; el tipo de cuenta es opcional.</p>
+        <Switch checked={efectivo} onChange={alternarEfectivo} label="Aceptar efectivo contraentrega" />
+        {metodos.map((m) => (
+          <div className="fila-item" key={m.id} style={{ padding: '8px 0', borderTop: '1px solid var(--bd)', opacity: m.activo ? 1 : 0.55 }}>
+            <div className="crece"><b>{m.nombre}</b><div className="muted">{m.numero_cuenta}{m.tipo_cuenta ? ` · ${m.tipo_cuenta}` : ''}</div></div>
+            <Switch checked={m.activo} onChange={(v) => alternarMetodo(m, v)} />
+            <button className="sec sm" onClick={() => { setErr({}); setEd({ id: m.id, nombre: m.nombre, numero_cuenta: m.numero_cuenta, tipo_cuenta: m.tipo_cuenta }) }}>Editar</button>
+            <button className="sec sm" onClick={() => borrarMetodo(m)} aria-label="Eliminar">🗑</button>
+          </div>))}
+        <div style={{ marginTop: 10 }}><button className="sec" onClick={() => { setErr({}); setEd({ id: '', nombre: '', numero_cuenta: '', tipo_cuenta: '' }) }}>+ Agregar método</button></div>
+      </div>
+
       <div className="card"><h2>Comportamiento natural y seguimiento</h2>
         <label>Número de atención personalizada (el bot lo da cuando no puede ayudar; ej. 573001234567)</label>
         <input value={f.numero_atencion ?? ''} onChange={(e) => set('numero_atencion', e.target.value)} />
         <label>Pedidos grandes: desde cuántas galletas en un pedido el bot consulta con el admin (por defecto 30)</label>
         <input type="number" min={1} value={f.umbral_pedido_grande ?? '30'} onChange={(e) => set('umbral_pedido_grande', e.target.value)} />
-        <label>Simular "escribiendo…" y pausas entre mensajes</label>
-        <select value={f.simular_escritura ?? 'si'} onChange={(e) => set('simular_escritura', e.target.value)}><option value="si">Sí</option><option value="no">No</option></select>
+        <Switch checked={(f.simular_escritura ?? 'si') !== 'no'} onChange={(v) => set('simular_escritura', v ? 'si' : 'no')} label='Simular "escribiendo…" y pausas entre mensajes' />
         <label>Velocidad de escritura (milisegundos por carácter; más alto = más lento)</label>
         <input type="number" min={5} value={f.velocidad_escritura_ms ?? '35'} onChange={(e) => set('velocidad_escritura_ms', e.target.value)} />
         <label>Segundos de espera antes de responder, por si el cliente sigue escribiendo (0 = responder ya)</label>
         <input type="number" min={0} value={f.espera_agrupar_seg ?? '4'} onChange={(e) => set('espera_agrupar_seg', e.target.value)} />
-        <label>Recordatorios automáticos si el cliente no responde</label>
-        <select value={f.seguimiento_activo ?? 'si'} onChange={(e) => set('seguimiento_activo', e.target.value)}><option value="si">Activados</option><option value="no">Desactivados</option></select>
+        <Switch checked={(f.seguimiento_activo ?? 'si') !== 'no'} onChange={(v) => set('seguimiento_activo', v ? 'si' : 'no')} label="Recordatorios automáticos si el cliente no responde" />
         <div className="row">
           <div><label>1.er recordatorio (minutos)</label><input type="number" min={5} value={f.seguimiento_1_min ?? '10'} onChange={(e) => set('seguimiento_1_min', e.target.value)} /></div>
           <div><label>2.º y último (minutos)</label><input type="number" min={5} value={f.seguimiento_2_min ?? '360'} onChange={(e) => set('seguimiento_2_min', e.target.value)} /></div></div>
@@ -110,6 +143,7 @@ export default function Configuracion() {
           <div><label>Hasta (hora)</label><input type="number" min={1} max={24} value={f.horario_fin ?? '20'} onChange={(e) => set('horario_fin', e.target.value)} /></div></div>
         <p className="muted">WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</p>
       </div>
+
       <div className="card"><h2>Operación</h2>
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />
         <label>Franjas horarias de entrega (separadas por coma)</label><input value={f.franjas_entrega ?? ''} onChange={(e) => set('franjas_entrega', e.target.value)} />
@@ -119,14 +153,24 @@ export default function Configuracion() {
         <label>Logo del micrositio</label>{f.logo_url && <img className="thumb" src={f.logo_url} alt="logo" />}
         <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && logo(e.target.files[0])} />
       </div>
-      <button onClick={guardarTodo}>Guardar configuración</button>
-      <div className="card" style={{ marginTop: 12 }}><h2>Métodos de pago</h2>
-        {metodos.map((m) => (<div className="row" key={m.id}>
-          <input placeholder="Nombre" value={m.nombre} onChange={(e) => updM(m.id, { nombre: e.target.value })} />
-          <input placeholder="Número de cuenta" value={m.numero_cuenta} onChange={(e) => updM(m.id, { numero_cuenta: e.target.value })} />
-          <input placeholder="Tipo de cuenta" value={m.tipo_cuenta} onChange={(e) => updM(m.id, { tipo_cuenta: e.target.value })} />
-          <button className="sm" onClick={() => saveM(m)}>OK</button><button className="sec sm" onClick={() => delM(m.id)}>×</button></div>))}
-        <button className="sec" onClick={addM}>+ Agregar método</button></div>
+
+      <div className="barra-guardar">
+        <span className="muted">{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span>
+        <AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar configuración</AsyncButton>
+      </div>
+
+      <Modal abierto={!!ed} titulo={ed?.id ? 'Editar método de pago' : 'Nuevo método de pago'} onClose={() => setEd(null)} ancho={420}
+        pie={<><button className="sec" onClick={() => setEd(null)}>Cancelar</button><AsyncButton okText="Guardado" onClick={guardarMetodo}>Guardar</AsyncButton></>}>
+        {ed && <>
+          <label>Nombre * (ej. Nequi, Bre-B, Bancolombia)</label>
+          <input className={err.nombre ? 'invalido' : ''} autoFocus value={ed.nombre} onChange={(e) => setEd({ ...ed, nombre: e.target.value })} />
+          <label>Número de cuenta o llave *</label>
+          <input className={err.numero ? 'invalido' : ''} inputMode="text" value={ed.numero_cuenta} onChange={(e) => setEd({ ...ed, numero_cuenta: e.target.value })} />
+          <label>Tipo de cuenta (opcional)</label>
+          <input placeholder="ej. ahorros, corriente" value={ed.tipo_cuenta} onChange={(e) => setEd({ ...ed, tipo_cuenta: e.target.value })} />
+        </>}
+      </Modal>
+      <Confirmar c={conf} onClose={() => setConf(null)} />
     </>
   )
 }

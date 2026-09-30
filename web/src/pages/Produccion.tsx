@@ -3,8 +3,10 @@ import { supabase } from '../supabase'
 import { cop, hoy } from '../hooks'
 import type { Producto, Stock, Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
+import { AsyncButton, useToast } from '../ui'
 
 export default function Produccion() {
+  const toast = useToast()
   const [fecha, setFecha] = useState(hoy())
   const [prods, setProds] = useState<Producto[]>([])
   const [stock, setStock] = useState<Record<string, Stock>>({})
@@ -45,8 +47,11 @@ export default function Produccion() {
     const cantidad_excedente = Math.max(0, parseInt(exc[pid] || '0', 10) || 0)
     editando.current.delete(pid)
     const cur = stock[pid]
-    if (cur) await supabase.from('stock_dia').update({ cantidad_excedente }).eq('id', cur.id)
-    else await supabase.from('stock_dia').insert({ fecha, producto_id: pid, cantidad_excedente })
+    const { error } = cur
+      ? await supabase.from('stock_dia').update({ cantidad_excedente }).eq('id', cur.id)
+      : await supabase.from('stock_dia').insert({ fecha, producto_id: pid, cantidad_excedente })
+    if (error) { toast(error.message, 'err'); return false }
+    toast(`Stock de ${prods.find((p) => p.id === pid)?.nombre ?? 'sabor'} actualizado: ${cantidad_excedente}`)
     load()
   }
   const porProducir = (pid: string) => pedidos.reduce((a, o) =>
@@ -55,6 +60,7 @@ export default function Produccion() {
     const ids = pedidos.filter((o) => o.estado === 'recibido' || o.estado === 'pago_verificado' || o.estado === 'pendiente_cobro').map((o) => o.id)
     imprimirTickets(pedidos)
     if (ids.length) { await supabase.from('pedidos').update({ estado: 'impreso' }).in('id', ids); load() }
+    toast(`${pedidos.length} ticket${pedidos.length === 1 ? '' : 's'} enviado${pedidos.length === 1 ? '' : 's'} a imprimir`)
   }
 
   return (
@@ -69,14 +75,14 @@ export default function Produccion() {
             return (<tr key={p.id}><td>{p.nombre}</td><td>{s?.cantidad_agendada ?? 0}</td>
               <td><div className="row"><input type="number" min={0} value={exc[p.id] ?? '0'} style={quedan === 0 && s ? { borderColor: '#b00020' } : undefined}
                 onChange={(e) => { editando.current.add(p.id); setExc({ ...exc, [p.id]: e.target.value }) }} />
-                <button className="sm" onClick={() => guardar(p.id)}>OK</button></div>
+                <AsyncButton className="sm" okText="" onClick={() => guardar(p.id)}>OK</AsyncButton></div>
                 {s && quedan === 0 && <span className="badge warn">agotado</span>}</td>
               <td>{(s?.cantidad_agendada ?? 0) + quedan}</td><td><b>{porProducir(p.id)}</b></td></tr>)
           })}</tbody></table>
         <p className="muted">Cada pedido del bot pasa unidades de "Quedan" a "Vendidas" al instante; el total no cambia. "Quedan" es lo único que editas (cupo libre para pedidos).</p>
       </div>
       <div className="card"><h2>Pedidos del día ({pedidos.length})</h2>
-        <button onClick={imprimirTodos} disabled={!pedidos.length}>Imprimir todos los tickets</button>
+        <AsyncButton okText="Enviados" disabled={!pedidos.length} onClick={imprimirTodos}>Imprimir todos los tickets</AsyncButton>
         {pedidos.map((o) => (<p key={o.id}>#{o.numero} · {o.cliente_nombre} · <span className="badge">{o.estado}</span> · {cop(o.total)}</p>))}
       </div>
     </>

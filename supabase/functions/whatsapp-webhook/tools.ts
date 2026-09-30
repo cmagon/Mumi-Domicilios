@@ -40,7 +40,24 @@ export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string)
 const manana = (hoy: string) => new Date(new Date(hoy + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
 
 const ANTES_DE_IMPRIMIR = ['recibido', 'pago_verificado', 'pendiente_cobro']
-const PAGO_RE = /efectivo|contra ?entrega|al recibir|nequi|bre[- ]?b|llave|consign|transfer|bancolombia|daviplata|\bpse\b/i
+const PAGO_BASE = ['efectivo', 'contra ?entrega', 'al recibir', 'consign', 'transfer', 'pagar', 'pagarte', 'pagaré']
+const escRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Métodos de pago válidos: solo los de la configuración (tabla metodos_pago) y el efectivo si está habilitado
+async function metodosDisponibles(sb: SupabaseClient, cfg: Record<string, string>) {
+  const { data } = await sb.from('metodos_pago').select('nombre,numero_cuenta,tipo_cuenta').eq('activo', true)
+  return { medios: data ?? [], efectivo: cfg.acepta_efectivo !== 'no' }
+}
+function metodoValido(metodo: string, m: { medios: { nombre: string }[]; efectivo: boolean }) {
+  const mp = sinAcento(metodo ?? '')
+  if (mp.includes('efectivo')) return m.efectivo
+  return m.medios.some((x) => { const n = sinAcento(x.nombre); return mp.includes(n) || n.includes(mp) })
+}
+const listaMetodos = (m: { medios: { nombre: string }[]; efectivo: boolean }) => [...m.medios.map((x) => x.nombre), ...(m.efectivo ? ['Efectivo contraentrega'] : [])].join(', ')
+const normalizarHora = (h: unknown): string | null => {
+  const m = String(h ?? '').trim().match(/^(\d{1,2}):(\d{2})/)
+  return m && +m[1] < 24 && +m[2] < 60 ? `${m[1].padStart(2, '0')}:${m[2]}` : null
+}
 
 // Pedido vigente de este chat (aún no entregado ni cancelado)
 export async function pedidoActivo(sb: SupabaseClient, chat: string) {
@@ -72,7 +89,7 @@ export const TOOLS: Tool[] = [
   { name: 'consultar_medios_pago', description: 'Cuentas y medios de pago disponibles (nombre, número de cuenta, tipo). Úsala cuando el cliente pida un número de cuenta o diga que pagará por Nequi, Bre-B, consignación o transferencia.',
     parameters: { type: 'object', properties: {} } },
   { name: 'modificar_pedido', description: 'Modifica el pedido activo del cliente (método de pago, dirección, franja, nota) mientras el ticket no se haya impreso. Úsala cuando el cliente cambie de opinión después de crear el pedido. No cambia sabores, cantidades ni la fecha.',
-    parameters: { type: 'object', properties: { metodo_pago: { type: 'string' }, direccion: { type: 'string' }, ubicacion_compartida: { type: 'boolean' }, franja_horaria: { type: 'string' }, nota: { type: 'string' } } } },
+    parameters: { type: 'object', properties: { metodo_pago: { type: 'string' }, direccion: { type: 'string' }, ubicacion_compartida: { type: 'boolean' }, franja_horaria: { type: 'string' }, hora_entrega: { type: 'string', description: 'HH:MM en 24 h si el cliente pide otra hora específica' }, nota: { type: 'string' } } } },
   { name: 'avisar_equipo', description: 'Deja un aviso en el micrositio cuando no puedes resolver algo (sin silenciar el chat). Úsala junto con tu respuesta de "eso no te lo puedo confirmar".',
     parameters: { type: 'object', properties: { resumen: { type: 'string', description: 'Qué preguntó o necesita el cliente' }, nombre: { type: 'string' } }, required: ['resumen'] } },
   { name: 'validar_comprobante', description: 'Valida la última imagen de comprobante enviada por el cliente contra el monto a pagar. Si el cliente ya tiene un pedido activo sin pagar, valida contra el total de ese pedido y lo marca como pagado.',
@@ -83,7 +100,8 @@ export const TOOLS: Tool[] = [
       modalidad: { type: 'string', enum: ['domicilio', 'recoger'] }, direccion: { type: 'string' }, zona_tarifa: { type: 'string', description: 'Nombre de la tarifa de domicilio elegida' },
       nombre: { type: 'string' }, telefono_contacto: { type: 'string' }, metodo_pago: { type: 'string' },
       fecha_entrega: { type: 'string', description: 'YYYY-MM-DD' }, franja_horaria: { type: 'string' }, nota: { type: 'string' },
-      ubicacion_compartida: { type: 'boolean', description: 'true si la dirección viene de la ubicación (pin) que compartió el cliente' } },
+      ubicacion_compartida: { type: 'boolean', description: 'true si la dirección viene de la ubicación (pin) que compartió el cliente' },
+      hora_entrega: { type: 'string', description: 'HH:MM en 24 h, solo si el cliente pidió una hora específica de entrega (ej. "a las 3 pm" → 15:00)' } },
       required: ['items', 'modalidad', 'nombre', 'telefono_contacto', 'metodo_pago', 'fecha_entrega'] } },
   { name: 'notificar_humano', description: 'Escala la conversación a una persona y detiene el bot en este chat. ANTES de llamarla debes tener el nombre completo y el teléfono de contacto del cliente, y saber qué necesita; si falta algo, pídeselo primero.',
     parameters: { type: 'object', properties: {
@@ -140,8 +158,9 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       return { ok: true }
     }
     case 'consultar_medios_pago': {
-      const { data } = await sb.from('metodos_pago').select('nombre,numero_cuenta,tipo_cuenta').eq('activo', true)
-      return { medios: data ?? [], efectivo_contraentrega: true, nota: 'Envía TODOS los medios al cliente junto con el valor exacto a pagar; no le preguntes primero por cuál va a pagar.' }
+      const m = await metodosDisponibles(sb, cfg)
+      return { medios: m.medios, efectivo_contraentrega: m.efectivo,
+        nota: 'Estos son los ÚNICOS medios de pago disponibles: no menciones ni inventes otros. Si el cliente pide el número de cuenta, envía todos los medios con el valor exacto a pagar, sin preguntarle primero por cuál.' }
     }
     case 'validar_comprobante': {
       if (!ctx.comprobantePath) return { ok: false, motivo: 'El cliente aún no envió imagen de comprobante' }
@@ -178,6 +197,8 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         return { ok: false, error: 'El ticket ya se imprimió o el pedido va en camino: no se puede modificar desde aquí. Usa avisar_equipo y dile al cliente que alguien del equipo lo contacta.' }
       const cambios: Record<string, unknown> = {}; const notas: string[] = []
       if (a.metodo_pago && sinAcento(a.metodo_pago) !== sinAcento(p.metodo_pago ?? '')) {
+        const disp = await metodosDisponibles(sb, cfg)
+        if (!metodoValido(a.metodo_pago, disp)) return { ok: false, error: `Método de pago no disponible. Solo: ${listaMetodos(disp)}` }
         const efectivo = sinAcento(a.metodo_pago).includes('efectivo')
         cambios.metodo_pago = a.metodo_pago
         if (efectivo) { cambios.estado = 'pendiente_cobro'; cambios.pagado = false }
@@ -192,6 +213,11 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         }
       }
       if (a.franja_horaria) { cambios.franja_horaria = a.franja_horaria; notas.push(`Franja: ${a.franja_horaria}`) }
+      if (a.hora_entrega) {
+        const h = normalizarHora(a.hora_entrega)
+        if (!h) return { ok: false, error: 'hora_entrega debe tener formato HH:MM' }
+        cambios.hora_entrega_solicitada = h; notas.push(`Hora pedida: ${h}`)
+      }
       if (a.nota) { cambios.nota = [p.nota, a.nota].filter(Boolean).join(' | '); notas.push('Nota agregada') }
       if (!Object.keys(cambios).length) return { ok: false, error: 'No hay cambios que aplicar' }
       await sb.from('pedidos').update(cambios).eq('id', p.id)
@@ -242,10 +268,15 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const unidades = (a.items ?? []).reduce((t: number, i: any) => t + (Number(i.cantidad) || 0), 0)
   const umbral = Number(cfg.umbral_pedido_grande) > 0 ? Number(cfg.umbral_pedido_grande) : 30
   if (unidades >= umbral) return { ok: false, requiere_admin: true, error: `Pedidos de ${umbral} o más galletas los define el equipo: pide nombre, teléfono y detalle del pedido, usa notificar_humano (motivo pedido_grande_evento) y no crees el pedido.` }
-  // Nunca asumir el método de pago: el cliente debe haberlo dicho
+  // El método debe ser uno de los configurados y el cliente debe haberlo dicho (nunca asumirlo)
+  const disp = await metodosDisponibles(sb, cfg)
+  if (!metodoValido(a.metodo_pago, disp)) return { ok: false, error: `Método de pago no disponible. Ofrece solo: ${listaMetodos(disp)}` }
+  const payRe = new RegExp([...PAGO_BASE, ...disp.medios.map((x) => escRe(sinAcento(x.nombre)))].join('|'), 'i')
   const { data: dichos } = await sb.from('mensajes').select('contenido').eq('telefono', ctx.telefono).eq('rol', 'user').order('creado_en', { ascending: false }).limit(12)
-  if (!(dichos ?? []).some((m: any) => PAGO_RE.test(m.contenido)))
-    return { ok: false, error: 'El cliente todavía no ha dicho cómo va a pagar. Pregúntale (efectivo contraentrega, Nequi, Bre-B o consignación) y no asumas ninguno.' }
+  if (!(dichos ?? []).some((m: any) => payRe.test(sinAcento(m.contenido))))
+    return { ok: false, error: `El cliente todavía no ha dicho cómo va a pagar. Pregúntale ofreciendo solo: ${listaMetodos(disp)}; no asumas ninguno.` }
+  const horaPedida = a.hora_entrega ? normalizarHora(a.hora_entrega) : null
+  if (a.hora_entrega && !horaPedida) return { ok: false, error: 'hora_entrega debe tener formato HH:MM' }
 
   const items: { producto_id: string; cantidad: number; precio: number; nombre: string }[] = []
   for (const it of a.items) {
@@ -286,7 +317,7 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
     ubic = { lat: cv?.ultima_lat, lng: cv?.ultima_lng }
   }
   const { data: ped, error } = await sb.from('pedidos').insert({
-    chat_telefono: ctx.telefono, direccion_aprox: !!a.ubicacion_compartida, lat: ubic.lat ?? null, lng: ubic.lng ?? null,
+    chat_telefono: ctx.telefono, hora_entrega_solicitada: horaPedida, direccion_aprox: !!a.ubicacion_compartida, lat: ubic.lat ?? null, lng: ubic.lng ?? null,
     cliente_nombre: a.nombre, cliente_telefono: a.telefono_contacto, origen: 'bot', metodo_pago: a.metodo_pago,
     estado: efectivo ? 'pendiente_cobro' : 'pago_verificado', pagado: pagoOk, modalidad: a.modalidad, direccion: a.direccion ?? null,
     tarifa_domicilio: tarifa, total, nota: a.nota ?? null, fecha_entrega: fecha, franja_horaria: a.franja_horaria ?? null,
