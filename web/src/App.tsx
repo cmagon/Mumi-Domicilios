@@ -11,6 +11,7 @@ import Tarifas from './pages/Tarifas'
 import Configuracion from './pages/Configuracion'
 import PedidoManual from './pages/PedidoManual'
 import Kpis from './pages/Kpis'
+import Clientes from './pages/Clientes'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
 
@@ -49,7 +50,7 @@ export default function App() {
   )
 
   const tabs: [string, string][] = [['/', 'Producción'], ['/pedidos', 'Pedidos'], ['/manual', 'Pedido manual'],
-    ['/catalogo', 'Catálogo'], ['/tarifas', 'Tarifas'], ['/config', 'Configuración'], ['/kpis', 'KPIs']]
+    ['/clientes', 'Clientes'], ['/catalogo', 'Catálogo'], ['/tarifas', 'Tarifas'], ['/config', 'Configuración'], ['/kpis', 'KPIs']]
   return (
     <>
       <header className="top">
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="/tarifas" element={<Tarifas />} />
           <Route path="/config" element={<Configuracion />} />
           <Route path="/kpis" element={<Kpis />} />
+          <Route path="/clientes" element={<Clientes />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>
