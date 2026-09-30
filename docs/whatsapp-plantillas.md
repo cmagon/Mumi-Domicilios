@@ -1,13 +1,15 @@
 # Plantillas de WhatsApp (Meta Business Manager → WhatsApp → Message templates)
 
-Categoría: **Utility** · Idioma: **Spanish (es)**. Los nombres deben coincidir con los secrets `WA_TEMPLATE_ADMIN` y `WA_TEMPLATE_LISTO`.
+Categoría: **Utility** · Idioma: **Spanish (es)**. Meta rechaza plantillas que empiezan o terminan con una variable. Los nombres deben coincidir con los secrets `WA_TEMPLATE_ADMIN` y `WA_TEMPLATE_LISTO`.
 
 ## 1. `aviso_admin_mumi`
 Cuerpo:
 ```
-Atención requerida en un pedido. Cliente: {{1}}. Resumen: {{2}}. Escríbele desde tu WhatsApp; para reactivar el bot responde: reanudar {{1}}
+Atención requerida en un pedido. Cliente: {{1}}. Teléfono: {{2}}. Motivo: {{3}}. Detalle: {{4}}. Gracias.
 ```
-Ejemplos: {{1}} = 573001234567 · {{2}} = Pedido para evento de 30 personas, sin azúcar.
+Ejemplos: {{1}} = María Pérez · {{2}} = 3001234567 · {{3}} = Pedido grande o evento · {{4}} = 30 galletas surtidas para el sábado, sin azúcar
+
+Sin botones. El bot solo dispara este aviso cuando ya tiene nombre, teléfono y detalle del cliente. El bot se reactiva solo tras `horas_humano` horas (Configuración, 12 por defecto); antes se puede forzar escribiendo `reanudar <número>` desde el WhatsApp de admin.
 
 ## 2. `pedido_listo_mumi`
 Cuerpo:
