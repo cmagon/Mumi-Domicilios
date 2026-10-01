@@ -186,7 +186,7 @@ export default function Pedidos() {
                     <p style={{ margin: '6px 0 2px' }}>{(o.pedido_items ?? []).map((i) => `${i.cantidad} ${i.productos?.nombre}`).join(' · ')}</p>
                     <p className="muted" style={{ margin: 0 }}>
                       {cop(o.total)} · {o.metodo_pago ?? 'sin método'} · {o.pagado ? <span style={{ color: '#1e7d32' }}>pagado</span> : esEfectivo(o) ? 'cobrar al entregar' : <span style={{ color: '#b00020' }}>sin pagar</span>}
-                      {' · '}{o.modalidad === 'domicilio' ? `📍 ${o.direccion ?? ''}${o.direccion_aprox ? ' (aprox.)' : ''}` : 'Recoge en punto'}
+                      {' · '}{o.modalidad === 'domicilio' ? <>📍 {o.direccion ?? ''}{o.direccion_aprox ? ' (aprox.)' : ''}{o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank" onClick={(e) => e.stopPropagation()}>Ver mapa</a></>}</> : 'Recoge en punto'}
                     </p>
                     {o.nota && <p style={{ margin: '4px 0 0' }}><b>Nota:</b> {o.nota}</p>}
                     {!cancelado && (

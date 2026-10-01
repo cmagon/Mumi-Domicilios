@@ -9,6 +9,18 @@ type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null;
 export const ICONO_AVISO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪' }
 const RAPIDAS = ['Hola 😊 soy del equipo de Mumi', 'Ya te confirmo, un momento por favor 🙏', 'Gracias por tu pedido 🍪', '¿Me confirmas tu dirección, por favor?']
 
+// Ubicación compartida (pin) y enlaces dentro del mensaje
+function Contenido({ texto }: { texto: string }) {
+  const loc = texto.match(/compartió su ubicación[\s\S]*?\(lat (-?\d+\.?\d*), lng (-?\d+\.?\d*)\)/)
+  if (loc) {
+    const aprox = texto.match(/Dirección aproximada detectada: (.*?) \(lat/)?.[1]
+    const lugar = texto.match(/Lugar: (.*?)\. Dirección/)?.[1]
+    const url = `https://www.google.com/maps?q=${loc[1]},${loc[2]}`
+    return <a className="tarjeta-ubicacion" href={url} target="_blank"><b>📍 Ubicación compartida</b>{lugar && <span>{lugar}</span>}{aprox && aprox !== 'no disponible' && <span>{aprox}</span>}<span className="muted">{loc[1]}, {loc[2]} · Abrir en el mapa →</span></a>
+  }
+  return <>{texto.split(/(https?:\/\/\S+)/g).map((t, i) => (/^https?:/.test(t) ? <a key={i} href={t} target="_blank">{t}</a> : t))}</>
+}
+
 // Conversación tipo WhatsApp: historial en vivo, avisos del chat, tomar/devolver al bot y responder como persona.
 export default function ChatView({ telefono, nombre, onBack, resumen }: { telefono: string; nombre?: string | null; onBack?: () => void; resumen?: React.ReactNode }) {
   const toast = useToast()
@@ -140,7 +152,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
               <div className={`burbuja ${clase} ${nota ? 'nota' : ''}`}>
                 {m.rol !== 'user' && <span className="quien">{m.rol === 'admin' ? 'Equipo' : '🤖 Bot'}</span>}
                 {m.media_path && urls[m.media_path] && <a href={urls[m.media_path]} target="_blank"><img className="chat-img" src={urls[m.media_path]} alt="imagen del cliente" /></a>}
-                {m.contenido}
+                <Contenido texto={m.contenido} />
                 <span className="hora">{d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })}</span>
               </div>
             </div>)
