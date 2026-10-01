@@ -175,11 +175,13 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
           return (
             <div key={m.id}>
               {sep && <div className="chat-dia">{dia}</div>}
+              <div className={`fila-msg ${m.rol === 'user' ? 'izq' : 'der'}`}>
               <div className={`burbuja ${clase} ${nota ? 'nota' : ''}`}>
                 {m.rol !== 'user' && <span className="quien">{m.rol === 'admin' ? 'Equipo' : '🤖 Bot'}</span>}
                 {m.media_path && urls[m.media_path] && <a href={urls[m.media_path]} target="_blank"><img className="chat-img" src={urls[m.media_path]} alt="imagen del cliente" /></a>}
                 <Contenido texto={m.contenido} />
                 <span className="hora">{d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })}</span>
+              </div>
               </div>
             </div>)
         })}
