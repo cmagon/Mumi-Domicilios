@@ -4,6 +4,7 @@ import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
 import { memoriaCliente } from './memoria.ts'
 import { humanoTardo } from './humano.ts'
+import { sinNumeroPedido } from './texto.ts'
 import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
@@ -285,10 +286,11 @@ async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: s
       if (simular) await sleep(700)
     }
   }
-  for (const p of partes) {
+  for (let p of partes) {
     if (p === '[[FOTOS]]') { await enviarFotos(); continue }
     if (simular) { await marcarLeido(replyTo); await sleep(Math.min(Math.max(p.length * msPorCaracter, 1200), 5000)) }
     if (await hayNuevo()) { console.log('el cliente escribió mientras enviaba; se detiene el resto', to); return }
+    p = sinNumeroPedido(p)
     const id = await sendText(to, p)
     await guardar(p, id)
   }

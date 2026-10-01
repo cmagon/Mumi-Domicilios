@@ -7,6 +7,7 @@ import { construirProveedor } from '../whatsapp-webhook/config.ts'
 import { registrarAlerta } from '../whatsapp-webhook/alerts.ts'
 import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
+import { sinNumeroPedido } from '../whatsapp-webhook/texto.ts'
 import { humanoTardo } from '../whatsapp-webhook/humano.ts'
 import { analizarSesiones, aprenderDeSesiones } from '../whatsapp-webhook/analisis.ts'
 
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
         `Pendiente: ${cv.esperando}. Retoma la conversación donde quedó con el objetivo de cerrar la venta: escribe UN solo mensaje breve, cálido y natural (máx. 2 frases) que recuerde lo último que hablaron y proponga el siguiente paso concreto, sin presionar, sin repetir todo el resumen y sin inventar urgencia ni descuentos. ` +
         (n === 1 ? 'Es el último recordatorio: sé aún más breve y deja la puerta abierta ("cuando quieras me avisas").' : '')})
       const sistema = `${cfg.system_prompt}\n\nNo uses herramientas ni marcadores; responde solo con el texto del recordatorio.`
-      let texto = (await chat(prov, sistema, history, [], async () => ({}))).trim()
+      let texto = sinNumeroPedido((await chat(prov, sistema, history, [], async () => ({}))).trim())
       if (!texto) texto = (await chat(prov, sistema, history, [], async () => ({}))).trim() // el modelo a veces responde vacío: un reintento
       if (!texto) texto = n === 0 ? '¡Hola! 😊 ¿Sigues por ahí? Cuando quieras retomamos tu pedido.' : 'Cuando quieras me avisas y retomamos tu pedido 😊'
       const id = await sendText(cv.telefono, texto)
