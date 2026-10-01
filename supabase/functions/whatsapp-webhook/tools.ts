@@ -91,7 +91,7 @@ export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, d
 export type Ctx = {
   sb: SupabaseClient; cfg: Record<string, string>; telefono: string; prov: Provider
   comprobantePath?: string | null; comprobanteOk?: boolean; referencia?: string | null; humano?: boolean
-  fotos?: { link: string; caption: string }[]; pendiente?: string | null; pedidoCreado?: boolean
+  fotos?: { link: string; caption: string }[]; pendiente?: string | null; pedidoCreado?: boolean; errorPedido?: string
 }
 
 export const TOOLS: Tool[] = [
@@ -331,7 +331,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     case 'marcar_pendiente': ctx.pendiente = String(a.que ?? '').slice(0, 300); return { ok: true }
     case 'crear_pedido': {
       const r = await crearPedido(a, ctx) as { ok?: boolean }
-      if (r.ok) { ctx.pedidoCreado = true; ctx.pendiente = null }
+      if (r.ok) { ctx.pedidoCreado = true; ctx.pendiente = null } else ctx.errorPedido = JSON.stringify(r).slice(0, 300)
       return r
     }
     case 'notificar_humano': {
@@ -431,11 +431,9 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const total = items.reduce((s, i) => s + i.precio * i.cantidad, 0) + tarifa
   const efectivo = sinAcento(a.metodo_pago).includes('efectivo')
   const pagoOk = !efectivo && ctx.comprobanteOk === true
-  const pendiente = !efectivo && !pagoOk && a.pago_pendiente === true
+  // Transferencia sin comprobante todavía: el pedido se reserva igual con el pago pendiente (el equipo lo verifica)
+  const pendiente = !efectivo && !pagoOk
   const sinDir = a.modalidad === 'domicilio' && !a.direccion
-  if (!efectivo && !pagoOk && !pendiente) {
-    return { ok: false, error: 'Pago no verificado: usa validar_comprobante primero. Si el cliente dice que pagará después o al recibir, vuelve a llamar con pago_pendiente=true (sin cambiar el método de pago).' }
-  }
   let ubic: { lat?: number | null; lng?: number | null } = {}
   if (a.ubicacion_compartida) {
     const { data: cv } = await sb.from('conversaciones').select('ultima_lat,ultima_lng').eq('telefono', ctx.telefono).maybeSingle()
