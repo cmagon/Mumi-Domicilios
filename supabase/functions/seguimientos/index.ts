@@ -45,6 +45,10 @@ Deno.serve(async (req) => {
   const { data: convs } = await sb.from('conversaciones').select('telefono,esperando,esperando_desde,seguimientos')
     .not('esperando', 'is', null).eq('humano', false).lt('seguimientos', 2).gte('esperando_desde', ventana)
 
+  // Diagnóstico: ¿hay chats esperando que se descarten por humano / ventana / 2 recordatorios ya enviados?
+  const { data: todos } = await sb.from('conversaciones').select('telefono,humano,seguimientos,esperando_desde').not('esperando', 'is', null)
+  const descartados = (todos ?? []).filter((x) => x.humano || x.seguimientos >= 2 || new Date(x.esperando_desde).getTime() < Date.now() - 23 * 3600 * 1000)
+    .map((x) => `${x.telefono}: ${x.humano ? 'en modo humano' : x.seguimientos >= 2 ? 'ya recibió 2 recordatorios' : 'pasaron más de 23 h'}`)
   let enviados = 0
   const faltan: string[] = []
   for (const cv of convs ?? []) {
@@ -75,5 +79,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log('seguimientos: candidatos', convs?.length ?? 0, 'enviados', enviados)
-  return new Response(`ok: ${convs?.length ?? 0} candidatos, ${enviados} recordatorios enviados${faltan.length ? ` (aún no toca: ${faltan.join('; ')})` : ''}${retomados ? `, ${retomados} chats retomados` : ''}`)
+  return new Response(`ok: ${convs?.length ?? 0} candidatos, ${enviados} recordatorios enviados${faltan.length ? ` (aún no toca: ${faltan.join('; ')})` : ''}${retomados ? `, ${retomados} chats retomados` : ''}${descartados.length ? ` (descartados: ${descartados.join('; ')})` : ''}${!(todos ?? []).length ? ' (ningún chat tiene un seguimiento programado: el bot solo programa uno cuando deja una pregunta abierta sin venta cerrada)' : ''}`)
 })

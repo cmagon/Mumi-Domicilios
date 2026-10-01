@@ -5,7 +5,7 @@ import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import assert from 'node:assert'
-import { DATA } from './fake-supabase.mjs'
+import { DATA, calls } from './fake-supabase.mjs'
 
 const aqui = path.dirname(fileURLToPath(import.meta.url))
 const out = path.join(aqui, '.out.mjs')
@@ -38,6 +38,9 @@ async function enviar(texto, id) {
 let r = await enviar('hola quiero una de limon', 'w1')
 assert.equal(r.status, 200)
 assert.deepEqual(r.textos, ['Hola 😊', '¿Cuántas quieres?'], `respuesta inesperada: ${JSON.stringify(r.textos)}`)
+
+// 1b) Quedó una pregunta abierta: se programa el recordatorio (esperando)
+assert.ok(calls.some(([t, k, a]) => t === 'conversaciones' && k === 'upsert' && a.includes('esperando":"que el cliente retome')), 'no se programó el seguimiento tras una pregunta abierta')
 
 // 2) El modelo devuelve vacío: el cliente nunca se queda sin respuesta
 modeloVacio = true

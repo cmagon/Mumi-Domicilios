@@ -1,5 +1,5 @@
 // Cliente Supabase falso para pruebas de humo (encadenable)
-export const calls = []
+export const calls = (globalThis.__fakeCalls ??= [])
 export const DATA = {
   config: [['proveedor_ia','gemini'],['system_prompt','PROMPT'],['dias_produccion','miercoles,viernes'],['franjas_entrega','14:00-16:00,16:00-18:00'],['admin_numeros','573000000000'],
     ['espera_agrupar_seg','0'],['simular_escritura','no'],['acepta_efectivo','si']].map(([clave, valor]) => ({ clave, valor })),

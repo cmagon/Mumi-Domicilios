@@ -246,7 +246,8 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
     await enviarNatural(from, respuesta, ctx, msg.id, cfg, hayNuevo)
     // Seguimiento: si el bot dejó algo pendiente del cliente, se programa el recordatorio
     // Si quedó una pregunta abierta y la venta no está cerrada, también se programa retomar la conversación
-    const cerrado = ctx.pedidoCreado ? true : pa ? (pa.pagado || /efectivo/i.test(pa.metodo_pago ?? '')) : false
+    // Solo se considera cerrada la venta si este turno creó el pedido (un pedido viejo, pagado o en efectivo, no debe impedir retomar una conversación nueva)
+    const cerrado = !!ctx.pedidoCreado
     const pendienteFinal = ctx.pendiente ?? (!cerrado && respuesta.includes('?') ? 'que el cliente retome su compra donde quedó' : null)
     if (pendienteFinal && !ctx.humano) {
       await sb.from('conversaciones').upsert({ telefono: from, esperando: pendienteFinal, esperando_desde: new Date().toISOString(), seguimientos: 0 }, { onConflict: 'telefono' })
