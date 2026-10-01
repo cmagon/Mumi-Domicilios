@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from './supabase'
 import { AsyncButton, useToast } from './ui'
+import PedidosCliente from './PedidosCliente'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null }
@@ -16,6 +17,8 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const [conv, setConv] = useState<{ humano: boolean; humano_desde: string | null; nombre_wa: string | null } | null>(null)
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [texto, setTexto] = useState('')
+  const [verPedidos, setVerPedidos] = useState(false)
+  const [nActivos, setNActivos] = useState(0)
   const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
   const archivo = useRef<HTMLInputElement>(null)
   const [ahora, setAhora] = useState(Date.now())
@@ -42,7 +45,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   }, [telefono])
 
   useEffect(() => {
-    setMsgs([]); setAvisos([]); setConv(null); setTexto('')
+    setMsgs([]); setAvisos([]); setConv(null); setTexto(''); setVerPedidos(false)
     cargar(); marcarLeido()
     const ch = supabase.channel(`chat-${telefono}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes', filter: `telefono=eq.${telefono}` }, () => { cargar(); marcarLeido() })
@@ -107,6 +110,8 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
       <div className={`chat-modo ${humano ? 'hum' : ''}`}>
         {humano ? 'Atiendes tú: el bot está en silencio en este chat.' : 'El bot atiende este chat. Si respondes, tomas la conversación.'}
       </div>
+      <div className="pestanas"><button className={!verPedidos ? 'on' : ''} onClick={() => setVerPedidos(false)}>💬 Chat</button>
+        <button className={verPedidos ? 'on' : ''} onClick={() => setVerPedidos(true)}>📋 Pedidos{nActivos > 0 && <b>{nActivos}</b>}</button></div>
       {resumen}
       {avisos.length > 0 && (
         <div className="avisos-chat">
@@ -120,7 +125,8 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
           {avisos.length > 1 && <button className="ghost" onClick={leerTodos}>Marcar todos como leídos</button>}
         </div>)}
 
-      <div className="chat">
+      <div className="pc-panel" hidden={!verPedidos}><PedidosCliente telefono={telefono} onCuenta={setNActivos} /></div>
+      <div className="chat" hidden={verPedidos}>
         {!msgs.length && <p className="muted" style={{ textAlign: 'center' }}>No hay mensajes guardados de este cliente.</p>}
         {msgs.map((m) => {
           const d = new Date(m.creado_en)
@@ -142,7 +148,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         <div ref={fin} />
       </div>
 
-      <div className="chat-pie">
+      <div className="chat-pie" hidden={verPedidos}>
         {abierta ? (
           <>
             <div className="rapidas">{RAPIDAS.map((r) => <button key={r} className="chip" onClick={() => { setTexto((t) => (t ? t + ' ' : '') + r); area.current?.focus() }}>{r}</button>)}</div>

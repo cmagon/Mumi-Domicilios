@@ -248,3 +248,15 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .compositor .adjuntar { border-radius: 50%; width: 42px; height: 42px; min-width: 42px; padding: 0; font-size: 18px; flex: none; }
 .foto-prev { display: flex; align-items: center; gap: 8px; padding: 4px 2px 8px; font-size: 12px; }
 .foto-prev img { height: 64px; border-radius: 8px; }
+.pestanas { display: flex; border-bottom: 1px solid var(--bd); background: #fff; }
+.pestanas button { flex: 1; background: transparent; color: var(--mut); border-radius: 0; padding: 9px; border-bottom: 3px solid transparent; font-size: 14px; }
+.pestanas button:hover:not(:disabled) { background: transparent; color: var(--p); box-shadow: none; }
+.pestanas button.on { color: var(--p); border-bottom-color: var(--s); font-weight: 700; }
+.pestanas button b { margin-left: 6px; background: var(--s); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 11px; }
+.pc-panel { flex: 1; min-height: 0; overflow-y: auto; background: #f4f1ec; padding: 8px; }
+.pc-panel[hidden], .chat[hidden], .chat-pie[hidden] { display: none; }
+.pc-card { background: #fff; border: 1px solid var(--bd); border-radius: 10px; padding: 10px; margin-bottom: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; animation: fadeUp .2s ease both; }
+.pc-card.cancelado { opacity: .6; }
+.pc-cab { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .pc-fecha { margin-left: auto; }
+.pc-pasos { display: flex; gap: 3px; } .pc-pasos span { flex: 1; height: 5px; border-radius: 3px; background: #e5e0d8; } .pc-pasos span.hecho { background: var(--s); }
+.pc-acc { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
