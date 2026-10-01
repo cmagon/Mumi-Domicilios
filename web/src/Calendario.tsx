@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
 import { hoy, useConfig } from './hooks'
 import { AsyncButton, Modal, useToast } from './ui'
+import { AvisoModal, useAvisosBot } from './AvisosBot'
 
 type Excep = { fecha: string; tipo: 'produccion' | 'cerrado'; nota: string | null }
 const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
@@ -86,6 +87,9 @@ export function CalendarioGestion({ abierto, onClose, onCambio }: { abierto: boo
   const [sel, setSel] = useState<string | null>(null)
   const [nota, setNota] = useState('')
   const [pedidos, setPedidos] = useState(0)
+  const [aviso, setAviso] = useState(false)
+  const av = useAvisosBot()
+  const delDia = (f: string) => av.lista.filter((a) => a.tipo === 'evento' && a.fecha_desde && f >= a.fecha_desde && f <= (a.fecha_hasta ?? a.fecha_desde))
   const e = sel ? cal.mapa.get(sel) : undefined
   useEffect(() => {
     if (!sel) return
@@ -103,6 +107,7 @@ export function CalendarioGestion({ abierto, onClose, onCambio }: { abierto: boo
   }
   const regular = sel ? cal.regular(sel) : false
   return (
+    <>
     <Modal abierto={abierto} titulo="📅 Calendario de producción" onClose={onClose} ancho={420}>
       <Mes mes={mes} setMes={setMes} celda={(f) => {
         const x = cal.mapa.get(f)
@@ -112,6 +117,7 @@ export function CalendarioGestion({ abierto, onClose, onCambio }: { abierto: boo
       {sel ? (
         <div className="cal-sheet">
           <b>{new Date(sel + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}</b>
+          {delDia(sel).map((a) => <div key={a.id} className="aviso-pedidos" style={{ background: '#fff0c2' }}>🎪 {a.texto}{a.bloquea_entregas ? ' · sin entregas' : ''}</div>)}
           <div className="muted">{e ? (e.tipo === 'cerrado' ? 'Cerrado' : 'Producción extra') : regular ? 'Día de producción habitual' : 'Sin producción'}{e?.nota ? ` · ${e.nota}` : ''}</div>
           {pedidos > 0 && <div className="aviso-pedidos">⚠️ Hay {pedidos} pedido{pedidos > 1 ? 's' : ''} activo{pedidos > 1 ? 's' : ''} para ese día: avísales o reprográmalos si lo cierras.</div>}
           <label>Nota (el bot puede decir el motivo a los clientes)</label>
@@ -122,9 +128,12 @@ export function CalendarioGestion({ abierto, onClose, onCambio }: { abierto: boo
               : regular ? <AsyncButton className="peligro" okText="Cerrado" onClick={() => guardar('cerrado')}>🚫 Cerrar este día</AsyncButton>
               : <AsyncButton okText="Agregado" onClick={() => guardar('produccion')}>➕ Marcar como día de producción</AsyncButton>}
             {e && <AsyncButton className="sec" okText="Guardado" onClick={() => guardar(e.tipo)}>Guardar nota</AsyncButton>}
+            <button className="sec" onClick={() => setAviso(true)}>🎪 Evento este día</button>
           </div>
         </div>
       ) : <p className="muted">Toca un día para cerrarlo (feria, evento…) o agregar una producción extra.</p>}
     </Modal>
+    <AvisoModal abierto={aviso} fecha={sel} onClose={() => setAviso(false)} onGuardado={av.recargar} />
+    </>
   )
 }

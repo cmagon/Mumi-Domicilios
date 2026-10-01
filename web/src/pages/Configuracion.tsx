@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
 import AprendizajeBot from '../AprendizajeBot'
+import AvisosBot from '../AvisosBot'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
 type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string; activo: boolean }
@@ -111,6 +112,8 @@ export default function Configuracion() {
           {hist.map((h) => (<div key={h.id} className="row"><span className="muted">{new Date(h.cambiado_en).toLocaleString()}</span>
             <button className="sec sm" onClick={() => { set('system_prompt', h.valor_anterior); toast('Versión cargada: guarda para aplicarla', 'info') }}>Restaurar</button></div>))}</details>}
       </div>
+
+      <AvisosBot />
 
       <AprendizajeBot />
 

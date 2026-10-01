@@ -4,6 +4,7 @@ import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
 import { memoriaCliente } from './memoria.ts'
 import { humanoTardo } from './humano.ts'
+import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
@@ -142,7 +143,7 @@ async function manejar(msg: any, nombreWA?: string) {
   // El nombre del perfil va aparte: si la columna aún no existe, no afecta lo demás
   if (nombreWA) await sb.from('conversaciones').update({ nombre_wa: nombreWA }).eq('telefono', from)
 
-  if (admins.includes(from) && (await comandoAdmin(from, texto, cfg))) return
+  if (admins.includes(from) && ((await comandoAdmin(from, texto, cfg)) || (await comandoAviso(sb, cfg, from, texto)))) return
   if (from === domi && (await comandoDomiciliario(from, texto))) return
 
   const { data: conv } = await sb.from('conversaciones').select('humano,humano_desde,ultimo_comprobante').eq('telefono', from).maybeSingle()
@@ -214,7 +215,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
     `Días de producción: ${cfg.dias_produccion}.${calEspecial} Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
-    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '')
+    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => ''))
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'

@@ -2,6 +2,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import type { Tool, Provider } from './ai.ts'
 import { leerComprobante } from './ai.ts'
 import { notify } from './wa.ts'
+import { bloqueosPorEventos } from './avisos.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -13,7 +14,10 @@ export const diaSemana = (fecha: string) => DIAS[new Date(fecha + 'T12:00:00Z').
 export type Excepciones = Map<string, { tipo: string; nota: string | null }>
 export async function cargarExcepciones(sb: SupabaseClient): Promise<Excepciones> {
   const { data } = await sb.from('calendario_produccion').select('fecha,tipo,nota').gte('fecha', fechaBogota())
-  return new Map((data ?? []).map((r: any) => [String(r.fecha), { tipo: r.tipo as string, nota: (r.nota as string | null) ?? null }]))
+  const m: Excepciones = new Map((data ?? []).map((r: any) => [String(r.fecha), { tipo: r.tipo as string, nota: (r.nota as string | null) ?? null }]))
+  // Eventos con "no hay entregas" también cierran ese día
+  for (const [f, nota] of await bloqueosPorEventos(sb).catch(() => new Map<string, string | null>())) if (!m.has(f)) m.set(f, { tipo: 'cerrado', nota })
+  return m
 }
 export function esDiaProduccion(fecha: string, dias: string, ex?: Excepciones) {
   const e = ex?.get(fecha)
