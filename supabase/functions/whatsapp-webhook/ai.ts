@@ -8,10 +8,12 @@ export type Provider = { proveedor: Proveedor; apiKey: string; modelo: string }
 export function compactar(filas: { rol: string; contenido: string }[]): Turn[] {
   const out: Turn[] = []
   for (const m of filas) {
-    const role = m.rol === 'assistant' ? 'assistant' : 'user'
+    // Lo que escribe una persona del equipo cuenta como mensaje "del lado del negocio" y se marca para que el bot lo sepa
+    const role = m.rol === 'user' ? 'user' : 'assistant'
+    const contenido = m.rol === 'admin' ? `[Una persona del equipo escribió al cliente:] ${m.contenido}` : m.contenido
     const last = out[out.length - 1]
-    if (last && last.role === role) last.content += '\n' + m.contenido
-    else out.push({ role, content: m.contenido })
+    if (last && last.role === role) last.content += '\n' + contenido
+    else out.push({ role, content: contenido })
   }
   while (out.length && out[0].role !== 'user') out.shift()
   return out

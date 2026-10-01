@@ -120,9 +120,11 @@ async function manejar(msg: any, nombreWA?: string) {
     const { data: citado } = await sb.from('mensajes').select('contenido,rol').eq('wa_id', msg.context.id).maybeSingle()
     if (citado) texto = `[El cliente responde a ${citado.rol === 'assistant' ? 'este mensaje tuyo' : 'este mensaje suyo'}: «${String(citado.contenido).slice(0, 240)}»] ${texto}`
   }
-  await sb.from('mensajes').update({ contenido: texto }).eq('wa_id', msg.id)
+  await sb.from('mensajes').update({ contenido: texto, ...(comprobantePath ? { media_path: comprobantePath } : {}) }).eq('wa_id', msg.id)
   // El cliente respondió: se cancela cualquier seguimiento pendiente
-  await sb.from('conversaciones').upsert({ telefono: from, esperando: null, esperando_desde: null, seguimientos: 0, ultimo_cliente_en: new Date().toISOString(), ...(nombreWA ? { nombre_wa: nombreWA } : {}) }, { onConflict: 'telefono' })
+  await sb.from('conversaciones').upsert({ telefono: from, esperando: null, esperando_desde: null, seguimientos: 0, ultimo_cliente_en: new Date().toISOString() }, { onConflict: 'telefono' })
+  // El nombre del perfil va aparte: si la columna aún no existe, no afecta lo demás
+  if (nombreWA) await sb.from('conversaciones').update({ nombre_wa: nombreWA }).eq('telefono', from)
 
   if (admins.includes(from) && (await comandoAdmin(from, texto, cfg))) return
   if (from === domi && (await comandoDomiciliario(from, texto))) return

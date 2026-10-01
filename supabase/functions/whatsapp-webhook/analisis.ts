@@ -20,7 +20,7 @@ export async function analizarSesiones(sb: SupabaseClient, cfg: Record<string, s
     try {
       const { data: msgs } = await sb.from('mensajes').select('rol,contenido').eq('telefono', s.telefono)
         .gte('creado_en', s.inicio).lte('creado_en', s.fin).order('creado_en').limit(80)
-      const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
+      const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo (persona)' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
       const out = await chat(prov, SISTEMA, [{ role: 'user', content: texto }], [], async () => ({}))
       const j = out.match(/\{[\s\S]*\}/)
       if (!j) continue
