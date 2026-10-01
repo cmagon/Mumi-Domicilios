@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
 // ---------- Toasts (avisos que se deslizan al guardar/editar) ----------
@@ -66,15 +67,15 @@ export function Modal({ abierto, titulo, onClose, children, pie, ancho = 480 }: 
     return () => { window.removeEventListener('keydown', esc); document.body.style.overflow = prev }
   }, [abierto, onClose])
   if (!abierto) return null
-  return (
+  // Se pinta en <body>: así ningún contenedor con animaciones/transform lo desplaza o recorta
+  return createPortal(
     <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: ancho }}>
         <div className="modal-cab"><h2>{titulo}</h2><button className="sec sm cerrar" onClick={onClose} aria-label="Cerrar">✕</button></div>
         <div className="modal-cuerpo">{children}</div>
         {pie && <div className="modal-pie">{pie}</div>}
       </div>
-    </div>
-  )
+    </div>, document.body)
 }
 
 // ---------- Confirmación ----------

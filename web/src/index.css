@@ -309,3 +309,9 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .burbujas .analisis-burbuja { position: static; }
 .burbuja-ia.pedido { background: var(--p); color: #fff; border-color: var(--p); }
 .burbuja-ia.pedido:hover:not(:disabled) { background: var(--p); color: #fff; }
+
+.fila-msg { display: flex; } .fila-msg.der { justify-content: flex-end; } .fila-msg.izq { justify-content: flex-start; }
+.modal { max-height: 92vh; max-height: 92dvh; max-width: 100vw; }
+.modal-cuerpo { min-height: 0; overflow-x: hidden; }
+.modal-cuerpo .row > * { min-width: 0; }
+.modal-cuerpo input, .modal-cuerpo select, .modal-cuerpo textarea { max-width: 100%; box-sizing: border-box; }
