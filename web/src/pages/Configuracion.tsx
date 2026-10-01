@@ -10,7 +10,7 @@ type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: strin
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'minutos_humano_sin_responder', 'proveedor_ia', 'motor_audio',
   'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'local_nombre', 'local_direccion', 'local_lat', 'local_lng', 'barrios_sin_domicilio', 'seguimiento_1_min',
-  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'permitir_reserva_sin_stock', 'logo_url']
+  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url']
 
 export default function Configuracion() {
   const toast = useToast()
@@ -62,6 +62,12 @@ export default function Configuracion() {
     const audio = data.audio?.clave_configurada ? `Audio (${data.audio.motor}): clave lista` : `Audio (${data.audio?.motor}): FALTA la API key`
     setPrueba(data.ok ? { ok: true, texto: `Chat OK con ${data.proveedor} / ${data.modelo} (${data.ms} ms). ${audio}` } : { ok: false, texto: `Chat con error: ${data.error}. ${audio}` })
     return data.ok as boolean
+  }
+  const favicon = async (file: File) => {
+    const path = `favicon-${Date.now()}.${file.name.split('.').pop()}`
+    const { error } = await supabase.storage.from('catalogo').upload(path, file, { contentType: file.type })
+    if (error) return toast(error.message, 'err')
+    set('favicon_url', supabase.storage.from('catalogo').getPublicUrl(path).data.publicUrl); toast('Favicon cargado: guarda la configuración para aplicarlo', 'info')
   }
   const logo = async (file: File) => {
     const path = `logo-${Date.now()}.${file.name.split('.').pop()}`
@@ -235,7 +241,10 @@ export default function Configuracion() {
 <div>
         <label>Logo del micrositio</label>{f.logo_url && <img className="thumb" src={f.logo_url} alt="logo" />}
         <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && logo(e.target.files[0])} />
-        <p className="muted">Este mismo logo se usa en el encabezado, como ícono de la app instalada y como favicon. Mejor una imagen cuadrada (mín. 512 px).</p>
+        <label>Favicon / ícono de la app</label>{(f.favicon_url || f.logo_url) && <img className="thumb" style={{ width: 64, height: 64, objectFit: 'contain' }} src={f.favicon_url || f.logo_url} alt="favicon" />}
+        <input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onChange={(e) => e.target.files?.[0] && favicon(e.target.files[0])} />
+        {f.favicon_url && <button type="button" className="sec sm" onClick={() => set('favicon_url', '')}>Quitar (usar el logo)</button>}
+        <p className="muted">El logo va solo en el encabezado. El favicon es el ícono de la pestaña y de la app instalada; si no subes uno, se usa el logo. Mejor un PNG cuadrado de al menos 512 × 512 px, con fondo.</p>
         <Switch checked={sonidoOn} onChange={cambiarSonido} label="Sonido de notificaciones en este dispositivo (nuevo mensaje de cliente o aviso)" />
         <button type="button" className="sec" onClick={() => tono()}>🔔 Probar sonido</button>
       </div>
