@@ -7,6 +7,7 @@ import { construirProveedor } from '../whatsapp-webhook/config.ts'
 import { registrarAlerta } from '../whatsapp-webhook/alerts.ts'
 import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
+import { humanoTardo } from '../whatsapp-webhook/humano.ts'
 import { analizarSesiones, aprenderDeSesiones } from '../whatsapp-webhook/analisis.ts'
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
@@ -19,9 +20,19 @@ Deno.serve(async (req) => {
   if (enviado !== secreto) return new Response('El header x-cron-secret no coincide con el secret NOTIFY_WEBHOOK_SECRET', { status: 403 })
   const { data: c } = await sb.from('config').select('clave,valor')
   const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
-  // Aprovecha la ejecución del cron para analizar unas pocas conversaciones cerradas sin venta
-  await analizarSesiones(sb, cfg, 3).catch(() => 0)
-  await aprenderDeSesiones(sb, cfg, 2).catch(() => 0)
+  // 1) Chats atendidos por una persona que tardó en responder: el bot los retoma (lo hace el webhook)
+  const { data: humanos } = await sb.from('conversaciones').select('telefono,humano_desde').eq('humano', true)
+  let retomados = 0
+  for (const h of humanos ?? []) {
+    if (!(await humanoTardo(sb, cfg, h.telefono, h.humano_desde))) continue
+    await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`, { method: 'POST', headers: { 'x-cron-secret': secreto, 'content-type': 'application/json' }, body: JSON.stringify({ reanudar: h.telefono }) }).catch(() => null)
+    retomados++
+  }
+  // 2) Aprovecha la ejecución del cron para analizar y aprender de unas pocas conversaciones (solo unas veces por hora, aunque el cron corra cada minuto)
+  if (new Date().getMinutes() % 10 < 2) {
+    await analizarSesiones(sb, cfg, 3).catch(() => 0)
+    await aprenderDeSesiones(sb, cfg, 2).catch(() => 0)
+  }
 
   if (cfg.seguimiento_activo === 'no') return new Response('desactivado')
 

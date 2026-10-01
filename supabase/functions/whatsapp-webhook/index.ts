@@ -3,6 +3,7 @@ import { chat, compactar, transcribir, type Provider } from './ai.ts'
 import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
 import { memoriaCliente } from './memoria.ts'
+import { humanoTardo } from './humano.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
@@ -145,13 +146,26 @@ async function manejar(msg: any, nombreWA?: string) {
   if (from === domi && (await comandoDomiciliario(from, texto))) return
 
   const { data: conv } = await sb.from('conversaciones').select('humano,humano_desde,ultimo_comprobante').eq('telefono', from).maybeSingle()
+  let retomado = false
   if (conv?.humano) {
-    // El bot calla mientras atiende una persona, y se reactiva solo pasadas N horas (config: horas_humano)
+    // El bot calla mientras atiende una persona. Vuelve si ella tarda más de N min en responder (config minutos_humano_sin_responder)
+    // o pasadas "horas_humano" h (config)
     const horas = Number(cfg.horas_humano) > 0 ? Number(cfg.horas_humano) : 12
     const desde = conv.humano_desde ? new Date(conv.humano_desde).getTime() : 0
-    if (Date.now() - desde < horas * 3600 * 1000) { console.log('chat en atención humana; el bot calla', from); return }
+    const tardo = await humanoTardo(sb, cfg, from, conv.humano_desde)
+    if (!tardo && Date.now() - desde < horas * 3600 * 1000) { console.log('chat en atención humana; el bot calla', from); return }
+    retomado = tardo
     await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', from)
   }
+  await responder({ from, msgId: msg.id, texto, cfg, ultimoComprobante: comprobantePath ?? conv?.ultimo_comprobante, nombreWA, retomado, agrupar: true })
+}
+
+// Genera y envía la respuesta del bot. `agrupar`: espera por si el cliente sigue escribiendo (ráfagas).
+async function responder(p: { from: string; msgId: string; texto: string; cfg: Record<string, string>; ultimoComprobante?: string | null; nombreWA?: string; retomado?: boolean; agrupar: boolean }) {
+  const { from, texto, cfg, nombreWA } = p
+  const msg = { id: p.msgId }
+  const comprobantePath = p.ultimoComprobante
+  const conv = { ultimo_comprobante: p.ultimoComprobante }
 
   // Agrupa ráfagas: si el cliente sigue escribiendo, solo responde la invocación del último mensaje, con todo el contexto
   const hayNuevo = async () => {
@@ -160,7 +174,7 @@ async function manejar(msg: any, nombreWA?: string) {
     return u.contenido !== '…' || Date.now() - new Date(u.creado_en).getTime() < 90000 // marcadores viejos sin procesar no cuentan
   }
   const espera = cfg.espera_agrupar_seg === '' || cfg.espera_agrupar_seg == null ? 5 : Math.max(0, Number(cfg.espera_agrupar_seg))
-  if (espera > 0) {
+  if (p.agrupar && espera > 0) {
     await sleep(espera * 1000)
     if (await hayNuevo()) { console.log('llegó otro mensaje del cliente; responde el último', from); return }
     await marcarLeido(msg.id)
@@ -197,6 +211,7 @@ async function manejar(msg: any, nombreWA?: string) {
   const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}.${calEspecial} Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
+    (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
     (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '')
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
@@ -264,12 +279,31 @@ async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: s
   await enviarFotos()
 }
 
+// Retoma un chat atendido por una persona que tardó en responder (lo invoca el cron "seguimientos")
+async function retomar(telefono: string) {
+  const cfg = await cargarConfig()
+  const { data: conv } = await sb.from('conversaciones').select('humano,humano_desde,ultimo_comprobante,nombre_wa').eq('telefono', telefono).maybeSingle()
+  if (!conv?.humano || !(await humanoTardo(sb, cfg, telefono, conv.humano_desde))) return
+  const { data: u } = await sb.from('mensajes').select('wa_id,contenido').eq('telefono', telefono).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+  if (!u) return
+  await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', telefono)
+  console.log('la persona tardó en responder; el bot retoma', telefono)
+  await responder({ from: telefono, msgId: u.wa_id, texto: String(u.contenido ?? ''), cfg, ultimoComprobante: conv.ultimo_comprobante, nombreWA: conv.nombre_wa ?? undefined, retomado: true, agrupar: false })
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url)
   if (req.method === 'GET') { // verificación del webhook de Meta
     if (url.searchParams.get('hub.mode') === 'subscribe' && url.searchParams.get('hub.verify_token') === Deno.env.get('WHATSAPP_VERIFY_TOKEN'))
       return new Response(url.searchParams.get('hub.challenge'))
     return new Response('forbidden', { status: 403 })
+  }
+  const secretoCron = req.headers.get('x-cron-secret')
+  if (secretoCron) { // llamada interna del cron (seguimientos)
+    if (secretoCron !== Deno.env.get('NOTIFY_WEBHOOK_SECRET')) return new Response('forbidden', { status: 403 })
+    const { reanudar } = await req.json().catch(() => ({}))
+    if (reanudar) EdgeRuntime.waitUntil(retomar(String(reanudar)).catch(async (e) => { console.error('retomar', e); await registrarAlerta(sb, await cargarConfig(), 'error', `Fallo retomando un chat: ${e}`) }))
+    return new Response('ok')
   }
   const raw = await req.text()
   if (!(await verifySignature(raw, req.headers.get('x-hub-signature-256')))) return new Response('bad signature', { status: 401 })
