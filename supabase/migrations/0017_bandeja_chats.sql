@@ -7,6 +7,10 @@ alter table public.mensajes add column if not exists media_path text;
 
 -- Hasta cuándo el admin ha leído cada chat
 alter table public.conversaciones add column if not exists admin_leido_en timestamptz;
+-- Columnas de migraciones anteriores (por si alguna no se corrió)
+alter table public.conversaciones add column if not exists humano_desde timestamptz;
+alter table public.conversaciones add column if not exists nombre_wa text;
+alter table public.conversaciones add column if not exists ultimo_cliente_en timestamptz;
 
 -- Una fila por cliente: último mensaje, no leídos, avisos pendientes y estado de la última sesión
 create or replace view public.chats_bandeja with (security_invoker = true) as
