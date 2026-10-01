@@ -96,8 +96,8 @@ export const TOOLS: Tool[] = [
     parameters: { type: 'object', properties: { sabor: { type: 'string' }, cantidad: { type: 'integer' }, fecha: { type: 'string' } }, required: ['sabor', 'cantidad'] } },
   { name: 'consultar_medios_pago', description: 'Cuentas y medios de pago disponibles (nombre, número de cuenta, tipo). Úsala cuando el cliente pida un número de cuenta o diga que pagará por Nequi, Bre-B, consignación o transferencia.',
     parameters: { type: 'object', properties: {} } },
-  { name: 'modificar_pedido', description: 'Modifica el pedido activo del cliente (método de pago, dirección, franja, nota) mientras el ticket no se haya impreso. Úsala cuando el cliente cambie de opinión después de crear el pedido. No cambia sabores, cantidades ni la fecha.',
-    parameters: { type: 'object', properties: { metodo_pago: { type: 'string' }, direccion: { type: 'string' }, ubicacion_compartida: { type: 'boolean' }, franja_horaria: { type: 'string' }, hora_entrega: { type: 'string', description: 'HH:MM en 24 h si el cliente pide otra hora específica' }, nota: { type: 'string' } } } },
+  { name: 'modificar_pedido', description: 'Modifica el pedido activo del cliente (método de pago, dirección, franja, hora, nota) cuando el cliente cambie de opinión o aclare algo después de crear el pedido. La nota es UNA sola y vigente: envía en "nota" el texto COMPLETO ya consolidado (reemplaza la anterior; "" la borra). Cambios de método de pago, dirección o franja solo antes de imprimir el ticket; la nota también después (el ticket se reimprime). No cambia sabores, cantidades ni la fecha.',
+    parameters: { type: 'object', properties: { metodo_pago: { type: 'string' }, direccion: { type: 'string' }, ubicacion_compartida: { type: 'boolean' }, franja_horaria: { type: 'string' }, hora_entrega: { type: 'string', description: 'HH:MM en 24 h si el cliente pide otra hora específica' }, nota: { type: 'string', description: 'Nota vigente COMPLETA del pedido (consolidada y resumida, reemplaza la anterior)' } } } },
   { name: 'avisar_equipo', description: 'Deja un aviso en el micrositio cuando no puedes resolver algo (sin silenciar el chat). Úsala junto con tu respuesta de "eso no te lo puedo confirmar".',
     parameters: { type: 'object', properties: { resumen: { type: 'string', description: 'Qué preguntó o necesita el cliente' }, nombre: { type: 'string' } }, required: ['resumen'] } },
   { name: 'validar_comprobante', description: 'Valida la última imagen de comprobante enviada por el cliente contra el monto a pagar. Si el cliente ya tiene un pedido activo sin pagar, valida contra el total de ese pedido y lo marca como pagado.',
@@ -250,7 +250,8 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     case 'modificar_pedido': {
       const p = await pedidoActivo(sb, ctx.telefono)
       if (!p) return { ok: false, error: 'No hay un pedido activo de este cliente' }
-      if (!ANTES_DE_IMPRIMIR.includes(p.estado))
+      const soloNota = a.nota !== undefined && !a.metodo_pago && !a.direccion && !a.franja_horaria && !a.hora_entrega
+      if (!ANTES_DE_IMPRIMIR.includes(p.estado) && !(soloNota && ['impreso', 'empacado', 'listo'].includes(p.estado)))
         return { ok: false, error: 'El ticket ya se imprimió o el pedido va en camino: no se puede modificar desde aquí. Usa avisar_equipo y dile al cliente que alguien del equipo lo contacta.' }
       const cambios: Record<string, unknown> = {}; const notas: string[] = []
       if (a.metodo_pago && sinAcento(a.metodo_pago) !== sinAcento(p.metodo_pago ?? '')) {
@@ -275,7 +276,14 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         if (!h) return { ok: false, error: 'hora_entrega debe tener formato HH:MM' }
         cambios.hora_entrega_solicitada = h; notas.push(`Hora pedida: ${h}`)
       }
-      if (a.nota) { cambios.nota = [p.nota, a.nota].filter(Boolean).join(' | '); notas.push('Nota agregada') }
+      // La nota es única y vigente: la última decisión del cliente reemplaza a la anterior (el marcador de "llamar por la dirección" se conserva solo si sigue sin dirección)
+      const marca = '📞 LLAMAR al cliente para pedir la dirección/ubicación de entrega'
+      const sinDirAun = p.modalidad === 'domicilio' && !p.direccion && !a.direccion
+      if (a.nota !== undefined) {
+        cambios.nota = [String(a.nota).replace(marca, '').replace(/\s*·\s*$/, '').trim(), sinDirAun ? marca : ''].filter(Boolean).join(' · ') || null
+        notas.push(`Nota: ${p.nota ?? '(vacía)'} → ${a.nota || '(vacía)'}`)
+      } else if (a.direccion && p.nota?.includes(marca)) cambios.nota = p.nota.replace(marca, '').replace(/\s*·\s*$/, '').trim() || null
+      if (['impreso', 'empacado', 'listo'].includes(p.estado) && cambios.nota !== undefined) cambios.reimprimir = true // ticket ya impreso: sale de nuevo con la nota final
       if (!Object.keys(cambios).length) return { ok: false, error: 'No hay cambios que aplicar' }
       await sb.from('pedidos').update(cambios).eq('id', p.id)
       await avisar(sb, 'cambio', `Pedido #${p.numero} modificado por el cliente`, notas.join(' · '), p.id, ctx.telefono)

@@ -195,7 +195,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
   const pa = await pedidoActivo(sb, from)
   const resumenPedido = pa
     ? `\n[Pedido activo de este cliente] #${pa.numero} · estado ${pa.estado} · ${pa.pagado ? 'PAGADO' : 'sin pagar'} · método: ${pa.metodo_pago} · total $${pa.total} · ` +
-      `${pa.modalidad}${pa.direccion ? ' a ' + pa.direccion : ''} · entrega ${pa.fecha_entrega}${pa.franja_horaria ? ' ' + pa.franja_horaria : ''} · ` +
+      `${pa.modalidad}${pa.direccion ? ' a ' + pa.direccion : ''} · entrega ${pa.fecha_entrega}${pa.franja_horaria ? ' ' + pa.franja_horaria : ''} · NOTA VIGENTE DEL TICKET: ${pa.nota ? '«' + pa.nota + '»' : '(ninguna)'} · ` +
       `${(pa.pedido_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(', ')}. ` +
       `Este pedido YA está creado y su cupo reservado: NO vuelvas a consultar disponibilidad para él ni cambies su fecha. Para cambios usa modificar_pedido (solo si el ticket no se ha impreso).`
     : ''
