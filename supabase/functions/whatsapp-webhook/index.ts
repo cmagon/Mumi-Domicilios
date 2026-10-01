@@ -232,6 +232,18 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
       respuesta = FALLBACK
     }
   } catch (e) { console.error('ia', e); await registrarAlerta(sb, cfg, 'error', String(e)); respuesta = FALLBACK }
+  // Guarda: el bot dijo que el pedido quedó reservado/tomado pero no existe ningún pedido → se corrige antes de enviar
+  const dijoReservado = (t: string) => /(te (lo |la |los |las )?(dej[eé]|separ[eé]|reserv[eé]|agend[eé])|qued[oó] (reservad|separad|agendad|pedido|tu pedido)|ya (est[aá]|qued[oó]) (reservad|separad|agendad|tomad|listo)|te (lo|la|los|las) dejo (reservad|separad|listo|agendad))/i.test(t)
+  if (respuesta && respuesta !== FALLBACK && !ctx.pedidoCreado && activos.length === 0 && dijoReservado(respuesta)) {
+    console.warn('el bot dijo que reservó sin crear pedido; se corrige', from, ctx.errorPedido ?? '')
+    try {
+      const fix = (await chat(prov, system, [...history, { role: 'assistant', content: respuesta }, { role: 'user', content: `[Sistema — no lo escribió el cliente] Tu mensaje anterior dice que el pedido quedó reservado, pero NO existe ningún pedido creado${ctx.errorPedido ? ` (crear_pedido respondió: ${ctx.errorPedido})` : ' (no llamaste a crear_pedido)'}. Si ya tienes todos los datos, llama a crear_pedido ahora (transferencia sin comprobante = se reserva con el pago pendiente; sin dirección = direccion_pendiente=true). Si falta un dato, pídelo. Escribe el mensaje definitivo para el cliente, sin mencionar este aviso.` }],
+        TOOLS, (n, a) => ejecutar(n, a, ctx))).trim()
+      if (fix) respuesta = fix
+    } catch (e) { console.error('guarda reserva', e) }
+    if (!ctx.pedidoCreado && dijoReservado(respuesta)) await sb.from('notificaciones').insert({ tipo: 'atencion', titulo: 'El bot dijo que reservó, pero no hay pedido', telefono: from,
+      detalle: `Revisa el chat y toma el pedido (🛒).${ctx.errorPedido ? ' Error al crearlo: ' + ctx.errorPedido : ''}` })
+  }
   console.log('respuesta', from, JSON.stringify(respuesta.slice(0, 120)))
   if (respuesta) {
     // No repetir lo que ya se le dijo al cliente, salvo que vuelva a preguntar
