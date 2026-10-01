@@ -274,3 +274,6 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .chat-pie { flex: none; }
 .compositor textarea { font-size: 16px; }
 .chatview .chat { overscroll-behavior: contain; }
+
+.por-revisar { border-left: 5px solid #d32f2f; background: #fff6f5; }
+.rev-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f3d6d3; font-size: 14px; }
