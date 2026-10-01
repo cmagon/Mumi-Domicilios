@@ -3,6 +3,8 @@ import { cop } from './hooks'
 import { fechaCorta, horaBonita } from './pedidoFlow'
 import QRCode from 'qrcode'
 
+// Teléfono sin el indicativo de Colombia (57) para el ticket
+const sin57 = (t = '') => String(t).replace(/\D/g, '').replace(/^57(?=\d{10}$)/, '')
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!))
 
 export async function imprimirTickets(pedidos: Pedido[]) {
@@ -11,7 +13,7 @@ export async function imprimirTickets(pedidos: Pedido[]) {
   const html = pedidos.map((o, k) => `
     <div class="t"><h3>Pedido #${o.numero}</h3>
     <p class="entrega">ENTREGAR: ${esc(fechaCorta(o.fecha_entrega))}<br/>${o.hora_entrega_solicitada ? 'HORA PEDIDA: ' + esc(horaBonita(o.hora_entrega_solicitada)) : (o.franja_horaria ? 'FRANJA: ' + esc(o.franja_horaria) : '')}</p>
-    <p><b>${esc(o.cliente_nombre)}</b><br/>Tel: ${esc(o.cliente_telefono)}</p>
+    <p><b>${esc(o.cliente_nombre)}</b><br/>Tel: ${esc(sin57(o.cliente_telefono))}</p>
     <p>${o.modalidad === 'domicilio' ? (o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida): ' : 'Domicilio: ') + esc(o.direccion ?? '') : 'RECOGE EN PUNTO'}</p>
     ${qrs[k] ? `<p class="qr">UBICACION (escanea):<br/><img src="${qrs[k]}" width="150" height="150"/></p>` : ''}
     <ul>${(o.pedido_items ?? []).map((i) => `<li>${i.cantidad} × ${esc(i.productos?.nombre ?? '')}</li>`).join('')}</ul>
