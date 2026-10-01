@@ -27,11 +27,13 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
   }, [telefono, cargar])
 
   const mover = async (o: Pedido, delta: 1 | -1) => {
-    const nuevo = pasoDe(o.estado) + delta
+    let nuevo = pasoDe(o.estado) + delta
+    // Sin pago confirmado no se vuelve a "Confirmado" (la impresora lo reimprimiría): se regresa a Recibido
+    if (delta === -1 && nuevo === 1 && !o.pagado && !esEfectivo(o)) nuevo = 0
     if (nuevo < 0 || nuevo >= PASOS.length) return false
     const cambios: Record<string, unknown> = { estado: estadoDePaso(nuevo, o) }
     if (nuevo === 1 && !esEfectivo(o)) cambios.pagado = true
-    if (nuevo === 6 && esEfectivo(o)) cambios.pagado = true
+    if (nuevo === 6) cambios.pagado = true
     const { error } = await supabase.from('pedidos').update(cambios).eq('id', o.id)
     if (error) { toast(error.message, 'err'); return false }
     toast(`Pedido #${o.numero} → ${PASOS[nuevo].label}`); cargar()
@@ -42,8 +44,8 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
       setConf({ titulo: 'Confirmar pago', okText: 'Sí, pago recibido', texto: <>¿Ya verificaste el pago de <b>{cop(o.total)}</b>? Revisa el comprobante en el chat.</>, onOk: () => mover(o, 1) })
       return 'omitir'
     }
-    if (p === 5 && esEfectivo(o) && !o.pagado) {
-      setConf({ titulo: 'Entrega y cobro', okText: 'Entregado y cobrado', texto: <>Confirma que se cobraron <b>{cop(o.total)}</b> en efectivo.</>, onOk: () => mover(o, 1) })
+    if (p === 5 && !o.pagado) {
+      setConf({ titulo: 'Entrega y cobro', okText: 'Entregado y pagado', texto: <>Confirma que se cobraron <b>{cop(o.total)}</b> ({o.metodo_pago ?? 'pago'}) al entregar.</>, onOk: () => mover(o, 1) })
       return 'omitir'
     }
     return mover(o, 1)
@@ -65,6 +67,8 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
             {o.nota && <div className="muted">📝 {o.nota}</div>}
             {!cancelado && paso < PASOS.length - 1 && <div className="pc-acc">
               {paso > 0 && <button className="ghost" onClick={() => mover(o, -1)}>← Atrás</button>}
+              {!o.pagado && !esEfectivo(o) && paso === 0 && <button className="sec sm" onClick={() => setConf({ titulo: 'Imprimir con pago pendiente', okText: 'Imprimir igual', texto: <>El pago de <b>{cop(o.total)}</b> sigue pendiente; el ticket saldrá con la alerta «PAGO PENDIENTE».</>,
+                onOk: async () => { const { error } = await supabase.from('pedidos').update({ estado: 'impreso', reimprimir: true }).eq('id', o.id); if (error) { toast(error.message, 'err'); return false } toast(`Ticket de #${o.numero} enviado a imprimir`); cargar() } })}>🖨 Imprimir (pago pendiente)</button>}
               <AsyncButton className="sig sm" okText="Hecho" onClick={() => avanzar(o)}>{PASOS[paso + 1].accion} →</AsyncButton></div>}
           </div>)
       })}

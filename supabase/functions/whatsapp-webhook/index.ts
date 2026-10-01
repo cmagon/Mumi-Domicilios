@@ -104,6 +104,20 @@ async function manejar(msg: any, nombreWA?: string) {
       await sb.storage.from('comprobantes').upload(comprobantePath, bytes, { contentType: mime })
       await sb.from('conversaciones').upsert({ telefono: from, ultimo_comprobante: comprobantePath, actualizado_en: new Date().toISOString() })
       texto = '[El cliente envió una imagen, posiblemente el comprobante de pago]' + (msg.image.caption ? ' ' + msg.image.caption : '')
+      // ¿Tiene pedidos recientes sin pago confirmado? Se adjunta la imagen al pedido y se avisa al admin en el micrositio para que lo verifique
+      const { data: pends } = await sb.from('pedidos').select('id,numero,total,metodo_pago').or(`chat_telefono.eq.${from},cliente_telefono.eq.${from}`)
+        .eq('pagado', false).eq('archivado', false).not('estado', 'in', '(cancelado,entregado)')
+        .gte('creado_en', new Date(Date.now() - 14 * 86400000).toISOString()).order('creado_en', { ascending: false })
+      const sinPagar = (pends ?? []).filter((p: any) => !/efectivo/i.test(p.metodo_pago ?? ''))
+      if (sinPagar.length) {
+        const p = sinPagar[0] as any
+        await sb.from('pedidos').update({ comprobante_url: comprobantePath }).eq('id', p.id)
+        const aviso = { tipo: 'pago_revision', titulo: `Posible comprobante — pedido #${p.numero}`, pedido_id: p.id, telefono: from,
+          detalle: `El cliente envió una imagen y el pedido tiene el pago pendiente ($${p.total} por ${p.metodo_pago ?? 'transferencia'}). Verifica el soporte y confirma el pago.${sinPagar.length > 1 ? ` También tiene pendientes: ${sinPagar.slice(1).map((x: any) => '#' + x.numero).join(', ')}.` : ''}` }
+        const { error: ea } = await sb.from('notificaciones').insert({ ...aviso, media_path: comprobantePath })
+        if (ea) await sb.from('notificaciones').insert(aviso) // por si la migración 0025 aún no se corrió
+        texto += ` [Sistema: el cliente tiene el pedido #${p.numero} con el pago pendiente. La imagen ya se adjuntó al pedido y se avisó al equipo para que verifique el pago. Agradécele, dile que recibiste el comprobante y que el equipo lo verifica y le confirma. NO marques el pedido como pagado ni pidas más datos de pago.]`
+      }
     } else if (msg.type === 'location') {
       const l = msg.location ?? {}
       const aprox = await direccionAprox(Number(l.latitude), Number(l.longitude))

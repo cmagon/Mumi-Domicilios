@@ -5,7 +5,7 @@ import { AsyncButton, useToast } from './ui'
 import PedidosCliente from './PedidosCliente'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
-type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null }
+type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
 export const ICONO_AVISO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪' }
 const RAPIDAS = ['Hola 😊 soy del equipo de Mumi', 'Ya te confirmo, un momento por favor 🙏', 'Gracias por tu pedido 🍪', '¿Me confirmas tu dirección, por favor?']
 
@@ -45,11 +45,11 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
     const [m, c, a] = await Promise.all([
       supabase.from('mensajes').select('id,rol,contenido,creado_en,media_path').eq('telefono', telefono).order('creado_en', { ascending: false }).limit(300),
       supabase.from('conversaciones').select('humano,humano_desde,nombre_wa').eq('telefono', telefono).maybeSingle(),
-      supabase.from('notificaciones').select('id,tipo,titulo,detalle,pedido_id').eq('telefono', telefono).eq('leida', false).order('creado_en', { ascending: false }),
+      supabase.from('notificaciones').select('*').eq('telefono', telefono).eq('leida', false).order('creado_en', { ascending: false }),
     ])
     const lista = ((m.data ?? []) as Msg[]).reverse()
     setMsgs(lista); setConv(c.data as typeof conv); setAvisos((a.data ?? []) as Aviso[])
-    const rutas = lista.map((x) => x.media_path).filter(Boolean) as string[]
+    const rutas = [...lista.map((x) => x.media_path), ...((a.data ?? []) as Aviso[]).map((x) => x.media_path)].filter(Boolean) as string[]
     if (rutas.length) {
       const { data } = await supabase.storage.from('comprobantes').createSignedUrls(rutas, 3600)
       setUrls(Object.fromEntries((data ?? []).filter((d) => d.signedUrl).map((d) => [d.path as string, d.signedUrl as string])))
@@ -131,6 +131,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
             <div className="aviso-item" key={a.id}>
               <span className="aviso-ico">{ICONO_AVISO[a.tipo] ?? '🔔'}</span>
               <div className="aviso-txt"><b>{a.titulo}</b>{a.detalle && <div className="muted">{a.detalle}</div>}
+                {a.media_path && urls[a.media_path] && <a href={urls[a.media_path]} target="_blank"><img className="chat-img" style={{ maxHeight: 120 }} src={urls[a.media_path]} alt="Comprobante" /></a>}
                 {a.pedido_id && <Link to="/pedidos">Ver pedidos →</Link>}</div>
               <button className="sec sm" onClick={() => leerAviso(a.id)}>Listo</button>
             </div>))}

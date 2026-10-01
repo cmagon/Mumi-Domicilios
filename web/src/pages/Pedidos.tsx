@@ -63,7 +63,7 @@ export default function Pedidos() {
   }, [menu])
 
   // Pedidos que el admin debe revisar antes de seguir: pago por transferencia sin verificar (los del bot sin comprobante) y domicilio sin dirección
-  const pagoPend = (o: Pedido) => !o.archivado && o.estado === 'recibido' && !o.pagado && !esEfectivo(o)
+  const pagoPend = (o: Pedido) => !o.archivado && o.estado !== 'cancelado' && o.estado !== 'entregado' && !o.pagado && !esEfectivo(o)
   const sinDir = (o: Pedido) => o.modalidad === 'domicilio' && !o.direccion && o.lat == null
   const porRevisar = useMemo(() => pedidos.filter((o) => !o.archivado && o.estado !== 'cancelado' && o.estado !== 'entregado' && (pagoPend(o) || sinDir(o))), [pedidos]) // eslint-disable-line
 
@@ -105,11 +105,13 @@ export default function Pedidos() {
     return true
   }
   const mover = async (o: Pedido, delta: 1 | -1) => {
-    const nuevo = pasoDe(o.estado) + delta
+    let nuevo = pasoDe(o.estado) + delta
+    // Sin pago confirmado no se vuelve a "Confirmado" (la impresora lo reimprimiría): se regresa a Recibido
+    if (delta === -1 && nuevo === 1 && !o.pagado && !esEfectivo(o)) nuevo = 0
     if (nuevo < 0 || nuevo >= PASOS.length) return false
     const cambios: Record<string, unknown> = { estado: estadoDePaso(nuevo, o) }
     if (nuevo === 1 && !esEfectivo(o)) cambios.pagado = true
-    if (nuevo === 6 && esEfectivo(o)) cambios.pagado = true
+    if (nuevo === 6) cambios.pagado = true
     const ok = await actualizar(o.id, cambios)
     if (ok) toast(`Pedido #${o.numero} → ${PASOS[nuevo].label}`)
     return ok
@@ -120,13 +122,25 @@ export default function Pedidos() {
       setConf({ titulo: 'Confirmar pago', okText: 'Sí, pago recibido', texto: <>¿Ya verificaste el pago de <b>{cop(o.total)}</b> de {o.cliente_nombre}?{comp[o.id] && <> Revisa el soporte adjunto.</>}</>, onOk: () => mover(o, 1) })
       return 'omitir'
     }
-    if (p === 5 && esEfectivo(o) && !o.pagado) {
-      setConf({ titulo: 'Entrega y cobro', okText: 'Entregado y cobrado', texto: <>Marca como entregado y confirma que se cobraron <b>{cop(o.total)}</b> en efectivo.</>, onOk: () => mover(o, 1) })
+    if (p === 5 && !o.pagado) {
+      setConf({ titulo: 'Entrega y cobro', okText: esEfectivo(o) ? 'Entregado y cobrado' : 'Entregado y pagado', texto: esEfectivo(o)
+        ? <>Marca como entregado y confirma que se cobraron <b>{cop(o.total)}</b> en efectivo.</>
+        : <>El pago de <b>{cop(o.total)}</b> por {o.metodo_pago} seguía pendiente. Confirma que el cliente ya pagó (revisa el soporte o la transferencia).{comp[o.id] && <> Hay un soporte adjunto.</>}</>, onOk: () => mover(o, 1) })
       return 'omitir'
     }
     return mover(o, 1)
   }
 
+  // Imprime el ticket aunque el pago siga pendiente: el ticket sale con la alerta "PAGO PENDIENTE" para que quien entrega lo verifique en sitio
+  const imprimirPendiente = (o: Pedido) => setConf({
+    titulo: 'Imprimir con pago pendiente', okText: 'Imprimir igual',
+    texto: <>El pago de <b>{cop(o.total)}</b> por {o.metodo_pago} sigue <b>pendiente</b>. El ticket saldrá con la alerta «PAGO PENDIENTE» para que se verifique al entregar, y el pedido seguirá marcado como pendiente de pago hasta que lo confirmes.</>,
+    onOk: async () => { if (await actualizar(o.id, { estado: 'impreso', reimprimir: true })) toast(`Ticket de #${o.numero} enviado a imprimir (pago pendiente)`) },
+  })
+  const confirmarPago = (o: Pedido) => setConf({
+    titulo: 'Confirmar pago', okText: 'Sí, pago recibido', texto: <>¿Ya verificaste el pago de <b>{cop(o.total)}</b> de {o.cliente_nombre}?{comp[o.id] && <> Revisa el soporte adjunto.</>}</>,
+    onOk: async () => { if (await actualizar(o.id, { pagado: true })) toast(`Pago de #${o.numero} confirmado`) },
+  })
   const reimprimir = async (o: Pedido) => { if (await actualizar(o.id, { reimprimir: true })) toast(`Reimpresión de #${o.numero} enviada a la impresora`) }
   const archivar = async (o: Pedido, v: boolean) => { if (await actualizar(o.id, { archivado: v })) toast(v ? `Pedido #${o.numero} archivado` : `Pedido #${o.numero} restaurado`) }
   const cancelar = (o: Pedido) => setConf({
@@ -218,6 +232,8 @@ export default function Pedidos() {
                         ? <span className="badge rojo">Cancelado</span>
                         : <>
                           {paso > 0 && !listo && <AsyncButton className="sec" okText="" onClick={() => mover(o, -1)}>← Atrás</AsyncButton>}
+                          {pagoPend(o) && paso === 0 && <button className="sec" onClick={() => imprimirPendiente(o)}>🖨 Imprimir (pago pendiente)</button>}
+                          {pagoPend(o) && paso >= 2 && <button className="sec" onClick={() => confirmarPago(o)}>💰 Confirmar pago</button>}
                           {!listo
                             ? <AsyncButton className="sig" okText="Hecho" onClick={() => avanzar(o)}>{PASOS[paso + 1].accion} →</AsyncButton>
                             : <span className="badge ok">✓ Entregado</span>}
