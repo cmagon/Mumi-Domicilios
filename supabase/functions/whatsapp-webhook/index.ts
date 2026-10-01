@@ -4,10 +4,10 @@ import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
 import { memoriaCliente } from './memoria.ts'
 import { humanoTardo } from './humano.ts'
-import { sinNumeroPedido } from './texto.ts'
+import { sinNumeroPedido, franjasHabladas } from './texto.ts'
 import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { apiKey, construirProveedor } from './config.ts'
-import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
+import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
@@ -213,7 +213,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
   const { data: aprend } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(30)
   const aprendizajes = (aprend ?? []).length ? `\n\n[Aprendizajes aprobados por el equipo — aplícalos siempre]\n${(aprend ?? []).map((x: any) => '- ' + x.regla).join('\n')}` : ''
   const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
-    `Días de producción: ${cfg.dias_produccion}.${calEspecial} Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
+    `Días de producción: ${cfg.dias_produccion}.${calEspecial}${(cfg.barrios_sin_domicilio ?? '').trim() ? ` NO hacemos domicilio en: ${cfg.barrios_sin_domicilio}.` : ''} Franjas de entrega: ${franjasHabladas(cfg.franjas_entrega ?? '')}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
     (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => ''))
@@ -281,8 +281,8 @@ async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: s
     if (fotosEnviadas || !ctx.fotos?.length) return
     fotosEnviadas = true
     for (const f of ctx.fotos) {
-      const id = await sendImage(to, f.link, f.caption)
-      await guardar(`[Foto del catálogo: ${f.caption}]`, id)
+      const id = f.tipo === 'video' ? await sendVideo(to, f.link, f.caption) : await sendImage(to, f.link, f.caption)
+      await guardar(`[${f.tipo === 'video' ? 'Video' : 'Foto'} del catálogo: ${f.caption}]`, id)
       if (simular) await sleep(700)
     }
   }
@@ -295,6 +295,12 @@ async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: s
     await guardar(p, id)
   }
   await enviarFotos()
+  if (ctx.enviarLocal) { // pin del local (o enlace al mapa si no hay coordenadas)
+    const lat = Number(cfg.local_lat), lng = Number(cfg.local_lng)
+    const dir = cfg.local_direccion || 'Cra 19d No. 21-35, Barrio La Granja'
+    const id = lat && lng ? await sendLocation(to, lat, lng, cfg.local_nombre || 'Mumi', dir) : await sendText(to, `📍 ${dir}\nhttps://maps.google.com/?q=${encodeURIComponent(dir + ' San José del Guaviare')}`)
+    await guardar(`[Ubicación del local: ${dir}]`, id)
+  }
 }
 
 // Retoma un chat atendido por una persona que tardó en responder (lo invoca el cron "seguimientos")
