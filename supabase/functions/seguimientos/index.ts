@@ -12,7 +12,11 @@ import { analizarSesiones } from '../whatsapp-webhook/analisis.ts'
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
 Deno.serve(async (req) => {
-  if (req.headers.get('x-cron-secret') !== Deno.env.get('NOTIFY_WEBHOOK_SECRET')) return new Response('forbidden', { status: 403 })
+  const secreto = Deno.env.get('NOTIFY_WEBHOOK_SECRET')
+  if (!secreto) return new Response('Falta crear el secret NOTIFY_WEBHOOK_SECRET en Supabase (Edge Functions → Secrets)', { status: 500 })
+  const enviado = req.headers.get('x-cron-secret')
+  if (!enviado) return new Response('Falta el header x-cron-secret en el trabajo programado', { status: 403 })
+  if (enviado !== secreto) return new Response('El header x-cron-secret no coincide con el secret NOTIFY_WEBHOOK_SECRET', { status: 403 })
   const { data: c } = await sb.from('config').select('clave,valor')
   const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
   // Aprovecha la ejecución del cron para analizar unas pocas conversaciones cerradas sin venta
@@ -27,7 +31,7 @@ Deno.serve(async (req) => {
   const esperas = [Number(cfg.seguimiento_1_min || 10), Number(cfg.seguimiento_2_min || 360)]
   const ventana = new Date(Date.now() - 23 * 3600 * 1000).toISOString()
   const { data: convs } = await sb.from('conversaciones').select('telefono,esperando,esperando_desde,seguimientos')
-    .not('esperando', 'is', null).eq('humano', false).lt('seguimientos', 2).gte('ultimo_cliente_en', ventana)
+    .not('esperando', 'is', null).eq('humano', false).lt('seguimientos', 2).gte('esperando_desde', ventana)
 
   let enviados = 0
   for (const cv of convs ?? []) {
@@ -54,5 +58,6 @@ Deno.serve(async (req) => {
       await registrarAlerta(sb, cfg, 'error', `Seguimiento: ${e}`)
     }
   }
-  return new Response(`ok ${enviados}`)
+  console.log('seguimientos: candidatos', convs?.length ?? 0, 'enviados', enviados)
+  return new Response(`ok: ${convs?.length ?? 0} candidatos, ${enviados} recordatorios enviados`)
 })

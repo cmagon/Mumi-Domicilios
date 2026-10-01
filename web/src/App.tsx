@@ -12,7 +12,6 @@ import Configuracion from './pages/Configuracion'
 import PedidoManual from './pages/PedidoManual'
 import Kpis from './pages/Kpis'
 import Clientes from './pages/Clientes'
-import Avisos from './pages/Avisos'
 import Chats from './pages/Chats'
 import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
@@ -25,11 +24,13 @@ export default function App() {
   const { cfg } = useConfig()
   const loc = useLocation()
   const [noLeidos, setNoLeidos] = useState(0)
+  const [menu, setMenu] = useState(false)
+  useEffect(() => setMenu(false), [loc.pathname])
 
   // Avisos del bot (pagos, atención humana, cosas que no pudo resolver): contador en vivo + notificación del navegador
   useEffect(() => {
     if (!esAdmin) return
-    const contar = () => supabase.from('notificaciones').select('id', { count: 'exact', head: true }).eq('leida', false).then(({ count }) => setNoLeidos(count ?? 0))
+    const contar = () => supabase.from('chats_bandeja').select('telefono', { count: 'exact', head: true }).or('avisos.gt.0,no_leidos.gt.0').then(({ count }) => setNoLeidos(count ?? 0))
     contar()
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission()
     const ch = supabase.channel('avisos-badge')
@@ -37,7 +38,12 @@ export default function App() {
         contar()
         if ('Notification' in window && Notification.permission === 'granted') new Notification(String(p.new.titulo), { body: String(p.new.detalle ?? '') })
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notificaciones' }, () => contar())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => contar())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones' }, () => contar())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes' }, (p) => {
+        contar()
+        if (p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
+      })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [esAdmin])
@@ -71,23 +77,32 @@ export default function App() {
       <button onClick={() => supabase.auth.signOut()}>Salir</button></div></main>
   )
 
-  const tabs: [string, string][] = [['/', 'Producción'], ['/avisos', noLeidos ? `Avisos 🔴${noLeidos}` : 'Avisos'], ['/pedidos', 'Pedidos'], ['/manual', 'Pedido manual'],
-    ['/chats', 'Chats'], ['/clientes', 'Clientes'], ['/catalogo', 'Catálogo'], ['/tarifas', 'Tarifas'], ['/config', 'Configuración'], ['/kpis', 'KPIs']]
+  const tabs: [string, string, string][] = [['/chats', '💬', 'Chats'], ['/pedidos', '📋', 'Pedidos'], ['/', '🔥', 'Producción'], ['/manual', '➕', 'Pedido manual'],
+    ['/clientes', '👥', 'Clientes'], ['/catalogo', '🧁', 'Catálogo'], ['/tarifas', '🛵', 'Tarifas'], ['/kpis', '📈', 'KPIs'], ['/config', '⚙️', 'Configuración']]
+  const enChats = loc.pathname === '/chats'
   return (
     <ToastProvider>
       <header className="top">
+        <button className="burger" aria-label="Menú" onClick={() => setMenu(true)}>☰{noLeidos > 0 && <span className="punto">{noLeidos}</span>}</button>
         {cfg.logo_url && <img src={cfg.logo_url} alt="Mumi" />}
         <h1>Mumi Delivery</h1>
         <button className="sec sm" onClick={() => supabase.auth.signOut()}>Salir</button>
       </header>
       <AlertaIA />
       <nav className="tabs">
-        {tabs.map(([to, l]) => <NavLink key={to} to={to} end={to === '/'}>{l}</NavLink>)}
+        {tabs.map(([to, , l]) => <NavLink key={to} to={to} end={to === '/'}>{l}{to === '/chats' && noLeidos > 0 ? ` 🔴${noLeidos}` : ''}</NavLink>)}
       </nav>
-      <main key={loc.pathname}>
+      {menu && <>
+        <div className="drawer-fondo" onClick={() => setMenu(false)} />
+        <aside className="drawer">
+          <div className="drawer-cab">{cfg.logo_url && <img src={cfg.logo_url} alt="" />}<b>Mumi Delivery</b><button className="ghost" style={{ color: '#fff' }} onClick={() => setMenu(false)}>✕</button></div>
+          {tabs.map(([to, ico, l]) => <NavLink key={to} to={to} end={to === '/'}><span className="ico">{ico}</span>{l}{to === '/chats' && noLeidos > 0 && <span className="cuenta">{noLeidos}</span>}</NavLink>)}
+          <div className="drawer-pie"><button className="sec" onClick={() => supabase.auth.signOut()}>Salir</button></div>
+        </aside></>}
+      <main key={loc.pathname} className={enChats ? 'ancho' : ''}>
         <Routes>
           <Route path="/" element={<Produccion />} />
-          <Route path="/avisos" element={<Avisos />} />
+          <Route path="/avisos" element={<Navigate to="/chats" />} />
           <Route path="/chats" element={<Chats />} />
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/manual" element={<PedidoManual />} />
