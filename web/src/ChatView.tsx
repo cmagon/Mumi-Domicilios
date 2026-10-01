@@ -4,11 +4,18 @@ import { supabase } from './supabase'
 import { AsyncButton, useToast } from './ui'
 import PedidosCliente from './PedidosCliente'
 import { useConfig } from './hooks'
+import QRCode from 'qrcode'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
 export const ICONO_AVISO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪' }
 const RAPIDAS = ['Hola 😊 soy del equipo de Mumi', 'Ya te confirmo, un momento por favor 🙏', 'Gracias por tu pedido 🍪', '¿Me confirmas tu dirección, por favor?']
+
+function QR({ url }: { url: string }) {
+  const [src, setSrc] = useState('')
+  useEffect(() => { QRCode.toDataURL(url, { margin: 1, width: 168 }).then(setSrc).catch(() => setSrc('')) }, [url])
+  return src ? <a href={url} target="_blank"><img className="ubic-qr" src={src} alt="QR de la ubicación" /></a> : null
+}
 
 // Ubicación compartida (pin) y enlaces dentro del mensaje
 function Contenido({ texto }: { texto: string }) {
@@ -17,7 +24,16 @@ function Contenido({ texto }: { texto: string }) {
     const aprox = texto.match(/Dirección aproximada detectada: (.*?) \(lat/)?.[1]
     const lugar = texto.match(/Lugar: (.*?)\. Dirección/)?.[1]
     const url = `https://www.google.com/maps?q=${loc[1]},${loc[2]}`
-    return <a className="tarjeta-ubicacion" href={url} target="_blank"><b>📍 Ubicación compartida</b>{lugar && <span>{lugar}</span>}{aprox && aprox !== 'no disponible' && <span>{aprox}</span>}<span className="muted">{loc[1]}, {loc[2]} · Abrir en el mapa →</span></a>
+    return (
+      <div className="tarjeta-ubicacion">
+        <b>📍 Ubicación compartida</b>
+        {lugar && <span>{lugar}</span>}{aprox && aprox !== 'no disponible' && <span>{aprox}</span>}
+        <div className="ubic-fila">
+          <QR url={url} />
+          <div className="ubic-link"><a href={url} target="_blank">Abrir en el mapa →</a><a className="muted" href={url} target="_blank">{url.replace('https://', '')}</a>
+            <span className="muted">{loc[1]}, {loc[2]}</span></div>
+        </div>
+      </div>)
   }
   return <>{texto.split(/(https?:\/\/\S+)/g).map((t, i) => (/^https?:/.test(t) ? <a key={i} href={t} target="_blank">{t}</a> : t))}</>
 }
