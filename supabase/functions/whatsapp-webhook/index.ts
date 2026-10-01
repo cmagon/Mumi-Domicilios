@@ -6,7 +6,7 @@ import { memoriaCliente } from './memoria.ts'
 import { humanoTardo } from './humano.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
-import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
+import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
 declare const EdgeRuntime: any
@@ -192,12 +192,14 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
   const memoria = await memoriaCliente(sb, prov, from).catch((e) => { console.error('memoria', e); return '' })
   const hoy = fechaBogota()
   const hora = new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true })
-  const pa = await pedidoActivo(sb, from)
-  const resumenPedido = pa
-    ? `\n[Pedido activo de este cliente] #${pa.numero} · estado ${pa.estado} · ${pa.pagado ? 'PAGADO' : 'sin pagar'} · método: ${pa.metodo_pago} · total $${pa.total} · ` +
-      `${pa.modalidad}${pa.direccion ? ' a ' + pa.direccion : ''} · entrega ${pa.fecha_entrega}${pa.franja_horaria ? ' ' + pa.franja_horaria : ''} · NOTA VIGENTE DEL TICKET: ${pa.nota ? '«' + pa.nota + '»' : '(ninguna)'} · ` +
-      `${(pa.pedido_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(', ')}. ` +
-      `Este pedido YA está creado y su cupo reservado: NO vuelvas a consultar disponibilidad para él ni cambies su fecha. Para cambios usa modificar_pedido (solo si el ticket no se ha impreso).`
+  const activos = await pedidosActivos(sb, from)
+  const pa = activos[0]
+  const descPedido = (x: any) => `#${x.numero} · estado ${x.estado} · ${x.pagado ? 'PAGADO' : 'sin pagar'} · método: ${x.metodo_pago} · total $${x.total} · ` +
+    `${x.modalidad}${x.direccion ? ' a ' + x.direccion : ''} · entrega ${x.fecha_entrega}${x.franja_horaria ? ' ' + x.franja_horaria : ''} · NOTA VIGENTE DEL TICKET: ${x.nota ? '«' + x.nota + '»' : '(ninguna)'} · ` +
+    `${(x.pedido_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(', ')}${x.cancelacion_solicitada ? ' · CANCELACIÓN YA SOLICITADA (en espera del equipo)' : ''}`
+  const resumenPedido = activos.length
+    ? `\n[${activos.length > 1 ? `Pedidos activos de este cliente (${activos.length}; cada uno se maneja por separado y las herramientas piden pedido_numero)` : 'Pedido activo de este cliente'}]\n${activos.map(descPedido).join('\n')}\n` +
+      `Estos pedidos YA están creados y su cupo reservado: NO vuelvas a consultar disponibilidad para ellos ni cambies su fecha. Para cambios usa modificar_pedido (solo si el ticket no se ha impreso); para cancelar usa solicitar_cancelacion. Un pedido NUEVO (otra dirección u otra fecha) se crea con crear_pedido sin tocar los existentes.`
     : ''
   const excep = await cargarExcepciones(sb)
   const calEspecial = excep.size ? ' Calendario especial (próximas fechas): ' + [...excep.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 12)

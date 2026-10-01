@@ -68,11 +68,21 @@ const normalizarHora = (h: unknown): string | null => {
 }
 
 // Pedido vigente de este chat (aún no entregado ni cancelado)
-export async function pedidoActivo(sb: SupabaseClient, chat: string) {
-  const { data } = await sb.from('pedidos')
-    .select('id,numero,estado,total,pagado,metodo_pago,fecha_entrega,franja_horaria,modalidad,direccion,tarifa_domicilio,comprobante_url,nota,pedido_items(cantidad,productos(nombre))')
-    .eq('chat_telefono', chat).not('estado', 'in', '(entregado,cancelado)').order('creado_en', { ascending: false }).limit(1).maybeSingle()
-  return data as any
+const SEL_PEDIDO = 'id,numero,estado,total,pagado,metodo_pago,fecha_entrega,franja_horaria,modalidad,direccion,tarifa_domicilio,comprobante_url,nota,cancelacion_solicitada,pedido_items(cantidad,productos(nombre))'
+// Todos los pedidos activos del cliente (puede tener varios: por ejemplo uno para cada dirección)
+export async function pedidosActivos(sb: SupabaseClient, chat: string): Promise<any[]> {
+  let { data, error } = await sb.from('pedidos').select(SEL_PEDIDO).eq('chat_telefono', chat).not('estado', 'in', '(entregado,cancelado)').order('creado_en', { ascending: false }).limit(6)
+  if (error) ({ data } = await sb.from('pedidos').select(SEL_PEDIDO.replace(',cancelacion_solicitada', '')).eq('chat_telefono', chat).not('estado', 'in', '(entregado,cancelado)').order('creado_en', { ascending: false }).limit(6)) // migración 0028 pendiente
+  return (data ?? []) as any[]
+}
+export async function pedidoActivo(sb: SupabaseClient, chat: string) { return (await pedidosActivos(sb, chat))[0] }
+// Pedido al que se refiere el cliente: por número, o el único activo; con varios hay que preguntar cuál
+async function pedidoObjetivo(sb: SupabaseClient, chat: string, numero?: number): Promise<{ p?: any; error?: string }> {
+  const l = await pedidosActivos(sb, chat)
+  if (!l.length) return { error: 'No hay un pedido activo de este cliente' }
+  if (numero != null) { const p = l.find((x) => x.numero === Number(numero)); return p ? { p } : { error: `No hay un pedido activo #${numero} de este cliente. Activos: ${l.map((x) => '#' + x.numero).join(', ')}` } }
+  if (l.length > 1) return { error: `El cliente tiene ${l.length} pedidos activos (${l.map((x) => `#${x.numero}${x.direccion ? ' a ' + x.direccion : ''}`).join('; ')}). Pregúntale a cuál se refiere y vuelve a llamar con pedido_numero.` }
+  return { p: l[0] }
 }
 export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, detalle?: string, pedido_id?: string | null, telefono?: string) {
   await sb.from('notificaciones').insert({ tipo, titulo, detalle: detalle ?? null, pedido_id: pedido_id ?? null, telefono: telefono ?? null })
@@ -97,7 +107,9 @@ export const TOOLS: Tool[] = [
   { name: 'consultar_medios_pago', description: 'Cuentas y medios de pago disponibles (nombre, número de cuenta, tipo). Úsala cuando el cliente pida un número de cuenta o diga que pagará por Nequi, Bre-B, consignación o transferencia.',
     parameters: { type: 'object', properties: {} } },
   { name: 'modificar_pedido', description: 'Modifica el pedido activo del cliente (método de pago, dirección, franja, hora, nota) cuando el cliente cambie de opinión o aclare algo después de crear el pedido. La nota es UNA sola y vigente: envía en "nota" el texto COMPLETO ya consolidado (reemplaza la anterior; "" la borra). Cambios de método de pago, dirección o franja solo antes de imprimir el ticket; la nota también después (el ticket se reimprime). No cambia sabores, cantidades ni la fecha.',
-    parameters: { type: 'object', properties: { metodo_pago: { type: 'string' }, direccion: { type: 'string' }, ubicacion_compartida: { type: 'boolean' }, franja_horaria: { type: 'string' }, hora_entrega: { type: 'string', description: 'HH:MM en 24 h si el cliente pide otra hora específica' }, nota: { type: 'string', description: 'Nota vigente COMPLETA del pedido (consolidada y resumida, reemplaza la anterior)' } } } },
+    parameters: { type: 'object', properties: { pedido_numero: { type: 'integer', description: 'Número del pedido (obligatorio si el cliente tiene varios pedidos activos)' }, metodo_pago: { type: 'string' }, direccion: { type: 'string' }, ubicacion_compartida: { type: 'boolean' }, franja_horaria: { type: 'string' }, hora_entrega: { type: 'string', description: 'HH:MM en 24 h si el cliente pide otra hora específica' }, nota: { type: 'string', description: 'Nota vigente COMPLETA del pedido (consolidada y resumida, reemplaza la anterior)' } } } },
+  { name: 'solicitar_cancelacion', description: 'El cliente quiere cancelar un pedido ya creado. TÚ NO cancelas: esto deja la solicitud marcada en el pedido y avisa al equipo en el micrositio para que la confirme. Después dile al cliente que el equipo le confirma la cancelación.',
+    parameters: { type: 'object', properties: { pedido_numero: { type: 'integer', description: 'Obligatorio si el cliente tiene varios pedidos activos' }, motivo: { type: 'string', description: 'Motivo que dio el cliente, si lo dijo' } } } },
   { name: 'avisar_equipo', description: 'Deja un aviso en el micrositio cuando no puedes resolver algo (sin silenciar el chat). Úsala junto con tu respuesta de "eso no te lo puedo confirmar".',
     parameters: { type: 'object', properties: { resumen: { type: 'string', description: 'Qué preguntó o necesita el cliente' }, nombre: { type: 'string' } }, required: ['resumen'] } },
   { name: 'validar_comprobante', description: 'Valida la última imagen de comprobante enviada por el cliente contra el monto a pagar. Si el cliente ya tiene un pedido activo sin pagar, valida contra el total de ese pedido y lo marca como pagado.',
@@ -221,8 +233,12 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     }
     case 'validar_comprobante': {
       if (!ctx.comprobantePath) return { ok: false, motivo: 'El cliente aún no envió imagen de comprobante' }
-      const activo = await pedidoActivo(sb, ctx.telefono)
-      const pendientePago = activo && !activo.pagado
+      const todos = await pedidosActivos(sb, ctx.telefono)
+      const sinPagar = todos.filter((x) => !x.pagado && !/efectivo/i.test(x.metodo_pago ?? ''))
+      const suma = sinPagar.reduce((t, x) => t + Number(x.total), 0)
+      // Un solo pago puede cubrir varios pedidos del cliente: se compara con cada pedido y con la suma de todos
+      const activo = sinPagar.length ? sinPagar[0] : todos[0]
+      const pendientePago = sinPagar.length > 0
       const esperado = pendientePago ? activo.total : a.monto_esperado
       const fallar = async (motivo: string) => {
         if (activo) await sb.from('pedidos').update({ comprobante_url: ctx.comprobantePath }).eq('id', activo.id)
@@ -233,23 +249,26 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       if (!file) return { ok: false, motivo: 'No se pudo abrir la imagen' }
       const r = await leerComprobante(ctx.prov, new Uint8Array(await file.arrayBuffer()), file.type || 'image/jpeg')
       if (!r.legible || r.monto == null) return await fallar('Imagen ilegible o sin monto; pide otra foto (ya se avisó al equipo para revisión manual)')
-      if (r.monto !== esperado) return await fallar(`El monto del comprobante (${r.monto}) no coincide con ${esperado}; revisión manual`)
+      const cubre = sinPagar.length > 1 && r.monto === suma ? sinPagar : (sinPagar.find((x) => Number(x.total) === r.monto) ? [sinPagar.find((x) => Number(x.total) === r.monto)] : null)
+      if (pendientePago && !cubre) return await fallar(`El monto del comprobante (${r.monto}) no coincide con ${sinPagar.length > 1 ? 'ningún pedido ni con la suma ' + suma : esperado}; revisión manual`)
+      if (!pendientePago && r.monto !== esperado) return await fallar(`El monto del comprobante (${r.monto}) no coincide con ${esperado}; revisión manual`)
       if (r.referencia) {
         const { count } = await sb.from('pedidos').select('id', { count: 'exact', head: true }).eq('referencia_pago', r.referencia)
         if (count) return await fallar('Esa referencia de pago ya fue usada en otro pedido')
       }
       ctx.comprobanteOk = true; ctx.referencia = r.referencia
-      if (activo) {
-        await sb.from('pedidos').update({ pagado: true, estado: ANTES_DE_IMPRIMIR.includes(activo.estado) ? 'pago_verificado' : activo.estado,
-          comprobante_url: ctx.comprobantePath, referencia_pago: r.referencia }).eq('id', activo.id)
-        await avisar(sb, 'pago', `Pago recibido — pedido #${activo.numero}`, `$${r.monto}${r.referencia ? ' · ref ' + r.referencia : ''} (validado automáticamente)`, activo.id, ctx.telefono)
+      for (const ped of cubre ?? []) {
+        await sb.from('pedidos').update({ pagado: true, estado: ANTES_DE_IMPRIMIR.includes(ped.estado) ? 'pago_verificado' : ped.estado,
+          comprobante_url: ctx.comprobantePath, referencia_pago: r.referencia }).eq('id', ped.id)
+        await avisar(sb, 'pago', `Pago recibido — pedido #${ped.numero}`, `$${ped.total}${r.referencia ? ' · ref ' + r.referencia : ''} (validado automáticamente)`, ped.id, ctx.telefono)
         ctx.pendiente = null
       }
       return { ok: true, monto: r.monto, referencia: r.referencia }
     }
     case 'modificar_pedido': {
-      const p = await pedidoActivo(sb, ctx.telefono)
-      if (!p) return { ok: false, error: 'No hay un pedido activo de este cliente' }
+      const obj = await pedidoObjetivo(sb, ctx.telefono, a.pedido_numero)
+      if (!obj.p) return { ok: false, error: obj.error }
+      const p = obj.p
       const soloNota = a.nota !== undefined && !a.metodo_pago && !a.direccion && !a.franja_horaria && !a.hora_entrega
       if (!ANTES_DE_IMPRIMIR.includes(p.estado) && !(soloNota && ['impreso', 'empacado', 'listo'].includes(p.estado)))
         return { ok: false, error: 'El ticket ya se imprimió o el pedido va en camino: no se puede modificar desde aquí. Usa avisar_equipo y dile al cliente que alguien del equipo lo contacta.' }
@@ -291,6 +310,19 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       if (requierePago) ctx.pendiente = `comprobante de pago de $${p.total} del pedido #${p.numero}`
       return { ok: true, pedido: p.numero, total: p.total, cobrar_en_entrega: cambios.estado === 'pendiente_cobro' ? p.total : 0,
         siguiente: requierePago ? 'Envía los medios de pago (consultar_medios_pago) con el valor exacto y pide el comprobante; cuando llegue, valídalo con validar_comprobante.' : 'Confirma el cambio al cliente.' }
+    }
+    case 'solicitar_cancelacion': {
+      const obj = await pedidoObjetivo(sb, ctx.telefono, a.pedido_numero)
+      if (!obj.p) return { ok: false, error: obj.error }
+      const p = obj.p
+      const motivo = String(a.motivo ?? '').slice(0, 200)
+      const { error } = await sb.from('pedidos').update({ cancelacion_solicitada: true }).eq('id', p.id)
+      if (error) await sb.from('pedidos').update({ nota: [p.nota, '🚫 CANCELACIÓN SOLICITADA'].filter(Boolean).join(' · ') }).eq('id', p.id) // migración 0028 pendiente
+      const avanzado = !ANTES_DE_IMPRIMIR.includes(p.estado)
+      await avisar(sb, 'cancelacion', `Cancelación solicitada — pedido #${p.numero}`,
+        `El cliente quiere cancelar el pedido #${p.numero} ($${p.total}, estado ${p.estado}${p.pagado ? ', YA PAGADO: definir reembolso' : ''}).${motivo ? ' Motivo: ' + motivo + '.' : ''}${avanzado ? ' ⚠️ El ticket ya se imprimió o va en camino.' : ''} Confírmalo cancelando el pedido en Pedidos, o márcalo para mantenerlo.`, p.id, ctx.telefono)
+      ctx.pendiente = null
+      return { ok: true, pedido: p.numero, instruccion: `Dile al cliente que ya avisaste al equipo y que le confirman la cancelación en breve${p.pagado ? ' (y lo del reembolso)' : ''}. NO digas que ya quedó cancelado.${avanzado ? ' Menciona que el pedido ya estaba en preparación o en camino, por lo que el equipo debe revisarlo.' : ''}` }
     }
     case 'avisar_equipo': {
       await avisar(sb, 'sin_respuesta', `El bot no pudo resolver: ${String(a.resumen ?? '').slice(0, 80)}`, `${a.nombre ? a.nombre + ' · ' : ''}${a.resumen}`, null, ctx.telefono)
@@ -335,6 +367,18 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   if (fecha === hoy && cierre && minutosAhora() >= cierre.min - margen)
     return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes del cierre de entregas); ofrece la próxima fecha de entrega` }
 
+  // Datos anómalos
+  const lista: any[] = Array.isArray(a.items) ? a.items : []
+  if (!lista.length || lista.some((i) => !Number.isInteger(Number(i.cantidad)) || Number(i.cantidad) < 1 || Number(i.cantidad) > 500))
+    return { ok: false, error: 'Cantidades inválidas: cada sabor debe tener una cantidad entera de 1 en adelante. Confirma las cantidades con el cliente.' }
+  if (new Date(fecha + 'T12:00:00Z').getTime() - Date.now() > 60 * 86400000) return { ok: false, error: 'Fecha demasiado lejana (máx. 60 días): confirma la fecha con el cliente o consulta al equipo.' }
+  if (String(a.telefono_contacto ?? '').replace(/\D/g, '').length < 7) return { ok: false, error: 'El teléfono de contacto no parece válido: pídelo de nuevo.' }
+  // Duplicado: el mismo pedido (mismos sabores, fecha y dirección) creado hace pocos minutos por este chat
+  const { data: recientes } = await sb.from('pedidos').select('numero,fecha_entrega,direccion,modalidad,pedido_items(cantidad,productos(nombre))').eq('chat_telefono', ctx.telefono)
+    .neq('estado', 'cancelado').gte('creado_en', new Date(Date.now() - 15 * 60000).toISOString())
+  const firma = (its: any[]) => its.map((i) => `${sinAcento(String(i.sabor ?? i.productos?.nombre ?? ''))}:${i.cantidad}`).sort().join('|')
+  const dup = (recientes ?? []).find((r: any) => r.fecha_entrega === fecha && firma(r.pedido_items ?? []) === firma(lista) && sinAcento(r.direccion ?? '') === sinAcento(a.direccion ?? ''))
+  if (dup) return { ok: false, error: `Ya existe el pedido #${(dup as any).numero} idéntico (mismos sabores, fecha y dirección) creado hace unos minutos. No lo dupliques: confírmaselo al cliente. Si de verdad quiere otro igual, debe ser para otra dirección u otra fecha.` }
   // Pedidos grandes se consultan con el admin
   const unidades = (a.items ?? []).reduce((t: number, i: any) => t + (Number(i.cantidad) || 0), 0)
   const umbral = Number(cfg.umbral_pedido_grande) > 0 ? Number(cfg.umbral_pedido_grande) : 30
