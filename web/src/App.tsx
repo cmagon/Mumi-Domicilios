@@ -15,6 +15,7 @@ import Clientes from './pages/Clientes'
 import Chats from './pages/Chats'
 import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
+import { tono } from './sonido'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
 
@@ -35,18 +36,35 @@ export default function App() {
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission()
     const ch = supabase.channel('avisos-badge')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones' }, (p) => {
-        contar()
+        contar(); tono(false)
         if ('Notification' in window && Notification.permission === 'granted') new Notification(String(p.new.titulo), { body: String(p.new.detalle ?? '') })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => contar())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones' }, () => contar())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes' }, (p) => {
-        contar()
+        contar(); if (p.new.rol === 'user' && p.new.contenido !== '…') tono(false)
         if (p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [esAdmin])
+
+  // El logo definido por el admin es también el favicon y el ícono de la app instalada
+  useEffect(() => {
+    if (!cfg.logo_url) return
+    const set = (rel: string, href: string, extra: Record<string, string> = {}) => {
+      let l = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`)
+      if (!l) { l = document.createElement('link'); l.rel = rel; document.head.appendChild(l) }
+      l.href = href; Object.entries(extra).forEach(([k, v]) => l!.setAttribute(k, v))
+    }
+    set('icon', cfg.logo_url); document.querySelector('link[rel="icon"]')?.removeAttribute('type'); set('apple-touch-icon', cfg.logo_url)
+    const mime = /\.png/i.test(cfg.logo_url) ? 'image/png' : /\.svg/i.test(cfg.logo_url) ? 'image/svg+xml' : /\.webp/i.test(cfg.logo_url) ? 'image/webp' : 'image/jpeg'
+    const man = { name: 'Mumi Delivery', short_name: 'Mumi', start_url: location.origin + '/', scope: location.origin + '/', display: 'standalone', background_color: '#ffffff', theme_color: '#6e140d',
+      icons: [{ src: cfg.logo_url, sizes: '192x192', type: mime, purpose: 'any' }, { src: cfg.logo_url, sizes: '512x512', type: mime, purpose: 'any' }] }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' }))
+    set('manifest', url)
+    return () => URL.revokeObjectURL(url)
+  }, [cfg.logo_url])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -84,9 +102,9 @@ export default function App() {
     <ToastProvider>
       <header className="top">
         <button className="burger" aria-label="Menú" onClick={() => setMenu(true)}>☰{noLeidos > 0 && <span className="punto">{noLeidos}</span>}</button>
-        {cfg.logo_url && <img src={cfg.logo_url} alt="Mumi" />}
-        <h1>Mumi Delivery</h1>
-        <button className="sec sm" onClick={() => supabase.auth.signOut()}>Salir</button>
+        {cfg.logo_url ? <img className="logo-cab" src={cfg.logo_url} alt="Mumi" /> : <span className="logo-cab-vacio">🍪</span>}
+        <span style={{ flex: 1 }} />
+        <button className="sec sm salir" onClick={() => supabase.auth.signOut()} aria-label="Salir" title="Salir">⏻</button>
       </header>
       <AlertaIA />
       <nav className="tabs">

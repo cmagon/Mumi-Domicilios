@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabase'
 import { cop } from '../hooks'
 import type { Producto } from '../types'
+import GaleriaMedios from '../GaleriaMedios'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
 const VACIO = { id: '', nombre: '', descripcion: '', detalles: '', precio: '', foto_url: '' as string | null, activo: true }
@@ -99,9 +100,13 @@ export default function Catalogo() {
           <label>Detalles específicos (ingredientes, alérgenos, tamaño, conservación…)</label>
           <textarea style={{ minHeight: 90 }} placeholder="El bot solo afirma lo que escribas aquí; si falta un dato, dirá que lo confirma con el equipo." value={ed.detalles} onChange={(e) => setEd({ ...ed, detalles: e.target.value })} />
           <label>Precio (COP) *</label><input className={errores.precio ? 'invalido' : ''} type="number" min={0} value={ed.precio} onChange={(e) => setEd({ ...ed, precio: e.target.value })} />
-          <label>Foto (alta calidad)</label>
-          {(prev || ed.foto_url) && <img className="thumb" style={{ width: 96, height: 96, marginBottom: 6 }} src={prev ?? ed.foto_url ?? ''} alt="foto" />}
-          <input type="file" accept="image/*" onChange={(e) => elegirFoto(e.target.files?.[0])} />
+          <label>Fotos y videos</label>
+          {ed.id
+            ? <GaleriaMedios productoId={ed.id} onPrincipal={(url) => { setEd((x) => x && { ...x, foto_url: url }); load() }} />
+            : <>
+              {(prev || ed.foto_url) && <img className="thumb" style={{ width: 96, height: 96, marginBottom: 6 }} src={prev ?? ed.foto_url ?? ''} alt="foto" />}
+              <input type="file" accept="image/*" onChange={(e) => elegirFoto(e.target.files?.[0])} />
+              <p className="muted">Esta será la foto principal. Después de guardar el sabor podrás agregar más fotos y videos.</p></>}
           <Switch checked={ed.activo} onChange={(v) => setEd({ ...ed, activo: v })} label="Visible para el bot y los clientes" />
         </>}
       </Modal>

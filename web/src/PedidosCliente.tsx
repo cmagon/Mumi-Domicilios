@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import { cop } from './hooks'
 import type { Pedido } from './types'
 import { PASOS, esEfectivo, estadoDePaso, fechaCorta, horaBonita, pasoDe } from './pedidoFlow'
-import { AsyncButton, Confirmar, useToast } from './ui'
+import { AsyncButton, Confirmar, Switch, useToast } from './ui'
 import { avisarCliente, EVENTO_PASO } from './avisarCliente'
 import type { ComponentProps } from 'react'
 
@@ -67,6 +67,8 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
             <div>{(o.pedido_items ?? []).map((i) => `${i.cantidad} × ${i.productos?.nombre}`).join(' · ')}</div>
             <div className="muted">{cop(o.total)} · {o.metodo_pago ?? 'sin método'} · {o.pagado ? '✅ pagado' : esEfectivo(o) ? 'cobrar al entregar' : '⏳ sin pagar'} · {o.modalidad === 'domicilio' ? <>🛵 {o.direccion ?? ''}{o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank">Ver mapa</a></>}</> : 'Recoge en tienda'}</div>
             {o.nota && <div className="muted">📝 {o.nota}</div>}
+            {!cancelado && paso < PASOS.length - 1 && o.chat_telefono && <div className={`aviso-wa ${o.avisar_cliente ? '' : 'off'}`}><span>💬 Avisar al cliente los cambios</span>
+              <Switch color="verde" checked={!!o.avisar_cliente} onChange={async (v) => { const { error } = await supabase.from('pedidos').update({ avisar_cliente: v }).eq('id', o.id); if (error) toast(error.message, 'err'); else cargar() }} /></div>}
             {!cancelado && paso < PASOS.length - 1 && <div className="pc-acc">
               {paso > 0 && <button className="ghost" onClick={() => mover(o, -1)}>← Atrás</button>}
               {!o.pagado && !esEfectivo(o) && paso === 0 && <button className="sec sm" onClick={() => setConf({ titulo: 'Imprimir con pago pendiente', okText: 'Imprimir igual', texto: <>El pago de <b>{cop(o.total)}</b> sigue pendiente; el ticket saldrá con la alerta «PAGO PENDIENTE».</>,

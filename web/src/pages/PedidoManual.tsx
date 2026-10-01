@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { hoy, useConfig } from '../hooks'
 import type { Producto } from '../types'
 import { AsyncButton, useToast } from '../ui'
+import HoraPicker from '../HoraPicker'
 import { SelectorFecha, useCalendario } from '../Calendario'
 
 export default function PedidoManual() {
@@ -58,7 +59,7 @@ export default function PedidoManual() {
       <button type="button" className="sec sm" onClick={() => setItems([...items, { producto_id: '', cantidad: 1 }])}>+ otro sabor</button>
       <div className="row">
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => set('fecha', v)} /></div>
-        <div><label>Hora pedida (opcional)</label><input type="time" value={f.hora} onChange={(e) => set('hora', e.target.value)} /></div>
+        <div><label>Hora pedida (opcional)</label><HoraPicker valor={f.hora} onChange={(v) => set('hora', v)} placeholder="Sin hora" /></div>
       </div>
       <label>Franja horaria</label><input placeholder="ej. 14:00-16:00" value={f.franja} onChange={(e) => set('franja', e.target.value)} />
       <label>Modalidad</label><select value={f.modalidad} onChange={(e) => set('modalidad', e.target.value)}><option value="domicilio">Domicilio</option><option value="recoger">Recoger</option></select>
