@@ -183,7 +183,7 @@ button.ghost { background: transparent; color: var(--mut); padding: 4px 8px; }
 
 /* ===== Bandeja de chats (tipo WhatsApp) ===== */
 main.ancho { max-width: 1240px; padding: 8px 12px; }
-.chats-app { display: grid; grid-template-columns: 1fr; height: calc(100dvh - 70px); min-height: 420px; background: #fff; border: 1px solid var(--bd); border-radius: 12px; overflow: hidden; }
+.chats-app { display: grid; grid-template-columns: 1fr; height: calc(100dvh - 135px); min-height: 420px; background: #fff; border: 1px solid var(--bd); border-radius: 12px; overflow: hidden; }
 .chats-app .col-lista, .chats-app .col-chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .chats-app.abierto .col-lista { display: none; }
 .chats-app:not(.abierto) .col-chat { display: none; }
@@ -198,7 +198,9 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
   body.chat-abierto header.top, body.chat-abierto nav.tabs, body.chat-abierto .toast-wrap { }
   body.chat-abierto header.top, body.chat-abierto nav.tabs { display: none; }
   body.chat-abierto main.ancho { padding: 0; }
-  body.chat-abierto .chats-app { height: 100dvh; border: 0; border-radius: 0; }
+  body.chat-abierto { overflow: hidden; }
+  /* Chat abierto en móvil: ocupa toda la pantalla visible (sobre el teclado) con el campo de escribir siempre abajo */
+  body.chat-abierto .chats-app { position: fixed; top: 0; left: 0; right: 0; height: var(--vv-h, 100dvh); border: 0; border-radius: 0; z-index: 30; min-height: 0; }
 }
 .lista-cab { padding: 10px 12px 6px; border-bottom: 1px solid var(--bd); display: flex; flex-direction: column; gap: 8px; }
 .lista-cab .fila { display: flex; gap: 8px; align-items: center; }
@@ -268,3 +270,7 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .analisis-burbuja .analisis-resumen { width: min(340px, 100%); box-shadow: 0 4px 16px rgba(0, 0, 0, .25); animation: fadeUp .15s ease both; }
 
 .tarjeta-ubicacion { display: flex; flex-direction: column; gap: 2px; background: #eef5ff; border-radius: 8px; padding: 8px; margin: 2px 0; color: var(--tx); text-decoration: none; }
+
+.chat-pie { flex: none; }
+.compositor textarea { font-size: 16px; }
+.chatview .chat { overscroll-behavior: contain; }

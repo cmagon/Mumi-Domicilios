@@ -65,7 +65,11 @@ export default function Chats() {
   // En móvil, el chat abierto ocupa toda la pantalla (se esconde el encabezado)
   useEffect(() => {
     document.body.classList.toggle('chat-abierto', !!sel)
-    return () => document.body.classList.remove('chat-abierto')
+    // Altura realmente visible (descontando el teclado) para que el campo de escribir quede pegado encima de él
+    const vv = window.visualViewport
+    const ajustar = () => { document.documentElement.style.setProperty('--vv-h', `${vv?.height ?? window.innerHeight}px`); window.scrollTo(0, 0) }
+    if (sel) { ajustar(); vv?.addEventListener('resize', ajustar); vv?.addEventListener('scroll', ajustar) }
+    return () => { document.body.classList.remove('chat-abierto'); vv?.removeEventListener('resize', ajustar); vv?.removeEventListener('scroll', ajustar); document.documentElement.style.removeProperty('--vv-h') }
   }, [sel])
 
   const atencion = (b: B) => b.avisos > 0 || b.no_leidos > 0
