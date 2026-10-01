@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import { chat, compactar, transcribir, type Provider } from './ai.ts'
 import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
+import { memoriaCliente } from './memoria.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
@@ -160,6 +161,7 @@ async function manejar(msg: any, nombreWA?: string) {
     await registrarAlerta(sb, cfg, 'error', String(e))
     await sendText(from, 'Dame un momento, en seguida te ayudo 🙏'); return
   }
+  const memoria = await memoriaCliente(sb, prov, from).catch((e) => { console.error('memoria', e); return '' })
   const hoy = fechaBogota()
   const hora = new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true })
   const pa = await pedidoActivo(sb, from)
@@ -181,7 +183,7 @@ async function manejar(msg: any, nombreWA?: string) {
   const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}.${calEspecial} Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
-    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido
+    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '')
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'
