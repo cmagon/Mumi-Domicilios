@@ -51,20 +51,21 @@ export default function App() {
 
   // El logo definido por el admin es también el favicon y el ícono de la app instalada
   useEffect(() => {
-    if (!cfg.logo_url) return
+    const icono = cfg.favicon_url || cfg.logo_url
+    if (!icono) return
     const set = (rel: string, href: string, extra: Record<string, string> = {}) => {
       let l = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`)
       if (!l) { l = document.createElement('link'); l.rel = rel; document.head.appendChild(l) }
       l.href = href; Object.entries(extra).forEach(([k, v]) => l!.setAttribute(k, v))
     }
-    set('icon', cfg.logo_url); document.querySelector('link[rel="icon"]')?.removeAttribute('type'); set('apple-touch-icon', cfg.logo_url)
-    const mime = /\.png/i.test(cfg.logo_url) ? 'image/png' : /\.svg/i.test(cfg.logo_url) ? 'image/svg+xml' : /\.webp/i.test(cfg.logo_url) ? 'image/webp' : 'image/jpeg'
+    set('icon', icono); document.querySelector('link[rel="icon"]')?.removeAttribute('type'); set('apple-touch-icon', icono)
+    const mime = /\.png/i.test(icono) ? 'image/png' : /\.svg/i.test(icono) ? 'image/svg+xml' : /\.webp/i.test(icono) ? 'image/webp' : 'image/jpeg'
     const man = { name: 'Mumi Delivery', short_name: 'Mumi', start_url: location.origin + '/', scope: location.origin + '/', display: 'standalone', background_color: '#ffffff', theme_color: '#6e140d',
-      icons: [{ src: cfg.logo_url, sizes: '192x192', type: mime, purpose: 'any' }, { src: cfg.logo_url, sizes: '512x512', type: mime, purpose: 'any' }] }
+      icons: [{ src: icono, sizes: '192x192', type: mime, purpose: 'any' }, { src: icono, sizes: '512x512', type: mime, purpose: 'any' }] }
     const url = URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' }))
     set('manifest', url)
     return () => URL.revokeObjectURL(url)
-  }, [cfg.logo_url])
+  }, [cfg.logo_url, cfg.favicon_url])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
