@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
 import AprendizajeBot from '../AprendizajeBot'
 import AvisosBot from '../AvisosBot'
+import MapaPin from '../MapaPin'
 import { sonidoActivo, setSonidoActivo, tono } from '../sonido'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
@@ -212,11 +213,9 @@ export default function Configuracion() {
 <div>
         <label>Nombre del local</label><input value={f.local_nombre ?? ''} onChange={(e) => set('local_nombre', e.target.value)} />
         <label>Dirección del local (la que el bot da al cliente)</label><input value={f.local_direccion ?? ''} onChange={(e) => set('local_direccion', e.target.value)} />
-        <div className="row">
-          <div><label>Latitud (pin del mapa)</label><input inputMode="decimal" value={f.local_lat ?? ''} onChange={(e) => set('local_lat', e.target.value)} /></div>
-          <div><label>Longitud</label><input inputMode="decimal" value={f.local_lng ?? ''} onChange={(e) => set('local_lng', e.target.value)} /></div></div>
-        <button type="button" className="sec" onClick={() => navigator.geolocation?.getCurrentPosition((p) => { set('local_lat', p.coords.latitude.toFixed(6)); set('local_lng', p.coords.longitude.toFixed(6)); toast('Ubicación actual tomada: guarda para aplicarla', 'info') }, () => toast('No se pudo obtener la ubicación (permite el acceso en el navegador)', 'err'))}>📍 Usar mi ubicación actual</button>
-        <p className="muted">Si pones las coordenadas, el bot envía un pin de WhatsApp; si no, un enlace al mapa con la dirección. Tip: estando en el local, usa el botón.</p>
+        <label>Ubicación en el mapa (pin)</label>
+        <MapaPin lat={f.local_lat ?? ''} lng={f.local_lng ?? ''} direccion={f.local_direccion} onChange={(la, ln) => { set('local_lat', la); set('local_lng', ln) }} />
+        <p className="muted">Con el pin colocado, el bot envía un pin de WhatsApp al cliente; si no hay pin, envía un enlace al mapa con la dirección. No olvides guardar.</p>
         <label>Barrios o zonas donde NO hacemos domicilio (separados por coma)</label>
         <textarea style={{ minHeight: 70 }} placeholder="ej. La Esperanza, El Resbalón, vereda Tierra Grande" value={f.barrios_sin_domicilio ?? ''} onChange={(e) => set('barrios_sin_domicilio', e.target.value)} />
         <p className="muted">Si la dirección del cliente contiene alguno de estos nombres, el bot le dice que ahí no hay domicilio y le ofrece recoger.</p>
