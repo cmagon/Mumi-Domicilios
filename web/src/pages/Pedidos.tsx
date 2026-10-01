@@ -64,8 +64,9 @@ export default function Pedidos() {
 
   // Pedidos que el admin debe revisar antes de seguir: pago por transferencia sin verificar (los del bot sin comprobante) y domicilio sin dirección
   const pagoPend = (o: Pedido) => !o.archivado && o.estado !== 'cancelado' && o.estado !== 'entregado' && !o.pagado && !esEfectivo(o)
+  const cancelPedida = (o: Pedido) => !!o.cancelacion_solicitada && o.estado !== 'cancelado' && o.estado !== 'entregado'
   const sinDir = (o: Pedido) => o.modalidad === 'domicilio' && !o.direccion && o.lat == null
-  const porRevisar = useMemo(() => pedidos.filter((o) => !o.archivado && o.estado !== 'cancelado' && o.estado !== 'entregado' && (pagoPend(o) || sinDir(o))), [pedidos]) // eslint-disable-line
+  const porRevisar = useMemo(() => pedidos.filter((o) => !o.archivado && o.estado !== 'cancelado' && o.estado !== 'entregado' && (pagoPend(o) || sinDir(o) || cancelPedida(o))), [pedidos]) // eslint-disable-line
 
   // ---------- Filtros y conteos ----------
   const pertenece = (o: Pedido, f: Filtro) =>
@@ -146,7 +147,7 @@ export default function Pedidos() {
   const cancelar = (o: Pedido) => setConf({
     titulo: `Cancelar pedido #${o.numero}`, peligro: true, okText: 'Cancelar pedido',
     texto: <>El stock reservado se devuelve solo. El pedido pasa a <b>Cancelados</b> y puedes archivarlo o eliminarlo después.</>,
-    onOk: () => actualizar(o.id, { estado: 'cancelado' }),
+    onOk: () => actualizar(o.id, { estado: 'cancelado', cancelacion_solicitada: false }),
   })
   const eliminar = (o: Pedido) => setConf({
     titulo: `Eliminar pedido #${o.numero}`, peligro: true, okText: 'Eliminar definitivamente',
@@ -174,7 +175,7 @@ export default function Pedidos() {
           {porRevisar.map((o) => (
             <div className="rev-fila" key={o.id}>
               <div><b>#{o.numero} · {o.cliente_nombre}</b> · {cop(o.total)} · {fechaCorta(o.fecha_entrega)}
-                <div className="muted">{[pagoPend(o) && `⏳ Pago pendiente por ${o.metodo_pago ?? 'transferencia'}`, sinDir(o) && '📞 Falta la dirección: llamar al cliente'].filter(Boolean).join(' · ')}</div></div>
+                <div className="muted">{[pagoPend(o) && `⏳ Pago pendiente por ${o.metodo_pago ?? 'transferencia'}`, sinDir(o) && '📞 Falta la dirección: llamar al cliente', cancelPedida(o) && '🚫 El cliente pidió cancelarlo: confirma o mantén'].filter(Boolean).join(' · ')}</div></div>
               <button className="sec sm" onClick={() => setDetalle(o)}>Revisar</button>
             </div>))}
         </div>)}
@@ -197,6 +198,7 @@ export default function Pedidos() {
                         {o.origen === 'manual' && <span className="badge">manual</span>}{' '}
                         {o.hora_entrega_solicitada && <span className={`badge hora-pedida ${esUrgente(o) ? 'rojo' : ''}`}>🕒 {horaBonita(o.hora_entrega_solicitada)}</span>}
                         {esUrgente(o) && <span className="badge rojo">¡pronto!</span>}
+                        {cancelPedida(o) && <span className="badge rojo">🚫 Cancelación solicitada</span>}
                         {pagoPend(o) && <span className="badge rojo">⏳ Pago pendiente</span>}
                         {sinDir(o) && <span className="badge rojo">📞 Sin dirección</span>}
                         {o.pendiente_produccion && <span className="badge hora-pedida" title="Parte del pedido aún no está fabricada">🍪 Por producir</span>}
@@ -232,6 +234,7 @@ export default function Pedidos() {
                         ? <span className="badge rojo">Cancelado</span>
                         : <>
                           {paso > 0 && !listo && <AsyncButton className="sec" okText="" onClick={() => mover(o, -1)}>← Atrás</AsyncButton>}
+                          {cancelPedida(o) && <button className="sec" onClick={() => actualizar(o.id, { cancelacion_solicitada: false })}>Mantener pedido</button>}
                           {pagoPend(o) && paso === 0 && <button className="sec" onClick={() => imprimirPendiente(o)}>🖨 Imprimir (pago pendiente)</button>}
                           {pagoPend(o) && paso >= 2 && <button className="sec" onClick={() => confirmarPago(o)}>💰 Confirmar pago</button>}
                           {!listo

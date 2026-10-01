@@ -8,7 +8,7 @@ import QRCode from 'qrcode'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
-export const ICONO_AVISO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪' }
+export const ICONO_AVISO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪', cancelacion: '🚫' }
 const RAPIDAS = ['Hola 😊 soy del equipo de Mumi', 'Ya te confirmo, un momento por favor 🙏', 'Gracias por tu pedido 🍪', '¿Me confirmas tu dirección, por favor?']
 
 function QR({ url }: { url: string }) {
