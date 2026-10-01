@@ -151,6 +151,7 @@ export default function Chats() {
 
 // Resumen de la IA para el chat. El análisis es por conversación; si el chat siguió después, queda "desactualizado" y se puede repetir.
 function BannerAnalisis({ b, s, recargar, toast }: { b?: B; s?: S; recargar: () => void; toast: ReturnType<typeof useToast> }) {
+  const [abierto, setAbierto] = useState(false)
   const [an, setAn] = useState<{ analizado_en: string; sugerencia: string | null } | null>(null)
   const cargar = useCallback(() => {
     if (!s) return
@@ -158,7 +159,6 @@ function BannerAnalisis({ b, s, recargar, toast }: { b?: B; s?: S; recargar: () 
   }, [s?.telefono, s?.inicio]) // eslint-disable-line
   useEffect(() => { cargar() }, [cargar, b?.ult_resumen])
   if (!b || !s) return null
-  if (b.ult_vendida) return <div className="analisis-resumen">✅ Venta cerrada · pedido #{b.ult_pedido}</div>
   const desact = an && new Date(s.fin).getTime() > new Date(an.analizado_en).getTime() + 60000
   const analizar = async () => {
     const { data, error } = await supabase.functions.invoke('analizar-chats', { body: { telefono: s.telefono, inicio: s.inicio } })
@@ -166,13 +166,19 @@ function BannerAnalisis({ b, s, recargar, toast }: { b?: B; s?: S; recargar: () 
     if (!data.analizadas) toast('No se pudo analizar (¿ya hubo una venta o faltan mensajes del cliente?)', 'info')
     cargar(); recargar()
   }
+  const icono = b.ult_vendida ? '✅' : desact ? '⚠️' : '🧠'
   return (
-    <div className="analisis-resumen">
-      {b.ult_resumen ? <>🧠 {b.ult_resumen}{b.ult_etapa ? ` (se cayó en: ${ETAPA[b.ult_etapa] ?? b.ult_etapa})` : ''}
-        {an?.sugerencia && <div className="muted">💡 {an.sugerencia}</div>}
-        <div className="muted">{desact ? '⚠️ Desactualizado: el chat siguió después del análisis.' : an ? `Analizado ${hora(an.analizado_en)}.` : ''}</div></>
-        : <span className="muted">Aún sin análisis. Se hace solo unas 3 horas después de que termina la conversación.</span>}
-      <div style={{ marginTop: 4 }}><AsyncButton className="sec sm" okText="Analizado" onClick={analizar}>{b.ult_resumen ? '🔄 Volver a analizar' : '🧠 Analizar ahora'}</AsyncButton></div>
+    <div className="analisis-burbuja">
+      <button className={`burbuja-ia ${abierto ? 'on' : ''}`} onClick={() => setAbierto(!abierto)} aria-label="Análisis de IA">{abierto ? '✕' : icono}</button>
+      {abierto && (
+        <div className="analisis-resumen">
+          {b.ult_vendida ? <>✅ Venta cerrada · pedido #{b.ult_pedido}</> : <>
+            {b.ult_resumen ? <>🧠 {b.ult_resumen}{b.ult_etapa ? ` (se cayó en: ${ETAPA[b.ult_etapa] ?? b.ult_etapa})` : ''}
+              {an?.sugerencia && <div className="muted">💡 {an.sugerencia}</div>}
+              <div className="muted">{desact ? '⚠️ Desactualizado: el chat siguió después del análisis.' : an ? `Analizado ${hora(an.analizado_en)}.` : ''}</div></>
+              : <span className="muted">Aún sin análisis. Se hace solo unas 3 horas después de que termina la conversación.</span>}
+            <div style={{ marginTop: 4 }}><AsyncButton className="sec sm" okText="Analizado" onClick={analizar}>{b.ult_resumen ? '🔄 Volver a analizar' : '🧠 Analizar ahora'}</AsyncButton></div></>}
+        </div>)}
     </div>
   )
 }

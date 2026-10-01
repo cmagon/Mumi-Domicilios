@@ -244,7 +244,7 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .compositor .enviar { border-radius: 50%; width: 42px; height: 42px; min-width: 42px; padding: 0; font-size: 18px; flex: none; }
 .ventana { font-size: 11px; margin-top: 4px; text-align: center; }
 .ventana-cerrada { padding: 12px; font-size: 13px; color: #6b4a00; background: #fff0c2; border-radius: 10px; }
-.analisis-resumen { margin: 6px 10px; padding: 8px 10px; background: #f3f0ff; border-radius: 10px; font-size: 13px; }
+.analisis-resumen { margin: 0; padding: 8px 10px; background: #f3f0ff; border-radius: 10px; font-size: 13px; }
 .compositor .adjuntar { border-radius: 50%; width: 42px; height: 42px; min-width: 42px; padding: 0; font-size: 18px; flex: none; }
 .foto-prev { display: flex; align-items: center; gap: 8px; padding: 4px 2px 8px; font-size: 12px; }
 .foto-prev img { height: 64px; border-radius: 8px; }
@@ -260,3 +260,9 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .pc-cab { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .pc-fecha { margin-left: auto; }
 .pc-pasos { display: flex; gap: 3px; } .pc-pasos span { flex: 1; height: 5px; border-radius: 3px; background: #e5e0d8; } .pc-pasos span.hecho { background: var(--s); }
 .pc-acc { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+.chatview { position: relative; }
+.analisis-burbuja { position: absolute; top: 112px; right: 10px; z-index: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: calc(100% - 20px); }
+.burbuja-ia { width: 34px; height: 34px; min-width: 34px; padding: 0; border-radius: 50%; background: #fff; color: var(--tx); border: 1px solid var(--bd); box-shadow: 0 2px 8px rgba(0, 0, 0, .2); font-size: 16px; opacity: .9; }
+.burbuja-ia:hover:not(:disabled) { background: #fff; color: var(--tx); }
+.analisis-burbuja .analisis-resumen { width: min(340px, 100%); box-shadow: 0 4px 16px rgba(0, 0, 0, .25); animation: fadeUp .15s ease both; }
