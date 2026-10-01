@@ -1,6 +1,8 @@
 // Render de tickets: texto plano (vista previa) y ESC/POS (impresora térmica 58/80 mm)
 const ESC = 0x1b, GS = 0x1d
 const ascii = (s = '') => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ñ/g, 'n').replace(/Ñ/g, 'N').replace(/[^\x20-\x7e]/g, '?')
+// Teléfono sin el indicativo de Colombia (57) para el ticket
+const sin57 = (t = '') => String(t).replace(/\D/g, '').replace(/^57(?=\d{10}$)/, '')
 const cop = (n) => '$' + Number(n).toLocaleString('es-CO')
 
 const mapa = (o) => `https://maps.google.com/?q=${Number(o.lat).toFixed(6)},${Number(o.lng).toFixed(6)}`
@@ -15,7 +17,7 @@ export function lineas(o, ancho = 32) {
     ...(o.hora_entrega_solicitada ? [{ t: `HORA PEDIDA: ${hora(o.hora_entrega_solicitada)}`, big: true, center: true }]
       : o.franja_horaria ? [{ t: `FRANJA: ${o.franja_horaria}`, bold: true, center: true }] : []),
     { t: sep },
-    { t: o.cliente_nombre, bold: true }, { t: `Tel: ${o.cliente_telefono}` },
+    { t: o.cliente_nombre, bold: true }, { t: `Tel: ${sin57(o.cliente_telefono)}` },
     { t: o.modalidad === 'domicilio' ? (o.direccion ? `${o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida)' : 'DOMICILIO'}: ${o.direccion}` : 'DOMICILIO: DIRECCION POR CONFIRMAR - LLAMAR AL CLIENTE') : 'RECOGE EN PUNTO' },
     ...(o.modalidad === 'domicilio' && o.lat != null && o.lng != null ? [{ t: `MAPA: ${mapa(o)}` }, { qr: mapa(o) }] : [])]
   out.push({ t: sep })
