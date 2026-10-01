@@ -104,7 +104,7 @@ export default function App() {
         <button className="burger" aria-label="Menú" onClick={() => setMenu(true)}>☰{noLeidos > 0 && <span className="punto">{noLeidos}</span>}</button>
         {cfg.logo_url ? <img className="logo-cab" src={cfg.logo_url} alt="Mumi" /> : <span className="logo-cab-vacio">🍪</span>}
         <span style={{ flex: 1 }} />
-        <button className="sec sm salir" onClick={() => supabase.auth.signOut()} aria-label="Salir" title="Salir">⏻</button>
+        <button className="salir" onClick={() => supabase.auth.signOut()}>⏻ Cerrar sesión</button>
       </header>
       <AlertaIA />
       <nav className="tabs">
@@ -115,7 +115,7 @@ export default function App() {
         <aside className="drawer">
           <div className="drawer-cab">{cfg.logo_url && <img src={cfg.logo_url} alt="" />}<b>Mumi Delivery</b><button className="ghost" style={{ color: '#fff' }} onClick={() => setMenu(false)}>✕</button></div>
           {tabs.map(([to, ico, l]) => <NavLink key={to} to={to} end={to === '/'}><span className="ico">{ico}</span>{l}{to === '/chats' && noLeidos > 0 && <span className="cuenta">{noLeidos}</span>}</NavLink>)}
-          <div className="drawer-pie"><button className="sec" onClick={() => supabase.auth.signOut()}>Salir</button></div>
+          <div className="drawer-pie"><button className="sec" style={{ width: '100%' }} onClick={() => supabase.auth.signOut()}>⏻ Cerrar sesión</button></div>
         </aside></>}
       <main key={loc.pathname} className={enChats ? 'ancho' : ''}>
         <Routes>

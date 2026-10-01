@@ -6,6 +6,7 @@ import { memoriaCliente } from './memoria.ts'
 import { humanoTardo } from './humano.ts'
 import { sinNumeroPedido, franjasHabladas } from './texto.ts'
 import { comandoAviso, contextoAvisos } from './avisos.ts'
+import { mediaAdmin } from './adminmedia.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
@@ -82,6 +83,12 @@ async function manejar(msg: any, nombreWA?: string) {
   if (dup) { console.log('mensaje duplicado, se ignora', msg.id); return }
 
   await marcarLeido(msg.id)
+
+  // Un administrador envía una foto/video con "foto: <sabor>" o "nuevo: Nombre, precio, descripción": va al catálogo
+  if (admins.includes(from) && ['image', 'video', 'document'].includes(msg.type) && (await mediaAdmin(sb, msg, from))) {
+    await sb.from('mensajes').update({ contenido: '[El administrador envió un archivo al catálogo]' }).eq('wa_id', msg.id)
+    return
+  }
 
   let texto = ''
   let comprobantePath: string | null = null
