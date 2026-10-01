@@ -10,17 +10,16 @@ const hora = (h?: string | null) => { if (!h) return ''; const [a, b] = h.split(
 const fecha = (f?: string | null) => f ? new Date(f + 'T12:00:00Z').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''
 
 function mensaje(evento: string, p: any): string | null {
-  const n = `#${p.numero}`
   const cuando = [fecha(p.fecha_entrega), p.hora_entrega_solicitada ? `a las ${hora(p.hora_entrega_solicitada)}` : p.franja_horaria ? `en la franja ${p.franja_horaria}` : ''].filter(Boolean).join(' ')
   switch (evento) {
-    case 'cancelado': return `Tu pedido ${n} quedó cancelado ✅${p.pagado ? ' El equipo te escribe para lo del reembolso.' : ''} Si fue un error o quieres hacer otro, escríbeme y con gusto te ayudo 😊`
-    case 'tomado': return `¡Listo! Ya tomamos tu pedido ${n} ✅${cuando ? ` Te lo entregamos ${cuando}.` : ''}${p.pagado ? '' : p.metodo_pago && !/efectivo/i.test(p.metodo_pago) ? ` Cuando hagas el pago por ${p.metodo_pago}, envíanos el comprobante por aquí.` : ''} Cualquier cambio me avisas 😊`
-    case 'mantener': return `Listo 😊 tu pedido ${n} sigue en pie${cuando ? ` para ${cuando}` : ''}. ¡Gracias por avisarnos!`
-    case 'pago': return `¡Recibimos tu pago del pedido ${n}! 🎉 Ya queda confirmado${cuando ? ` para ${cuando}` : ''}.`
-    case 'confirmado': return `Tu pedido ${n} quedó confirmado ✅${cuando ? ` Te lo entregamos ${cuando}.` : ''}`
-    case 'listo': return p.modalidad === 'domicilio' ? `Tu pedido ${n} ya está listo y pronto sale a tu dirección 🍪` : `Tu pedido ${n} ya está listo para recoger 🍪`
-    case 'en_ruta': return `Tu pedido ${n} va en camino 🛵 ¡Ya casi llega!`
-    case 'entregado': return `Tu pedido ${n} fue entregado. ¡Gracias por elegirnos, que lo disfrutes! 🍪💛`
+    case 'cancelado': return `Tu pedido quedó cancelado ✅${p.pagado ? ' El equipo te escribe para lo del reembolso.' : ''} Si fue un error o quieres hacer otro, escríbeme y con gusto te ayudo 😊`
+    case 'tomado': return `¡Listo! Ya tomamos tu pedido ✅${cuando ? ` Te lo entregamos ${cuando}.` : ''}${p.pagado ? '' : p.metodo_pago && !/efectivo/i.test(p.metodo_pago) ? ` Cuando hagas el pago por ${p.metodo_pago}, envíanos el comprobante por aquí.` : ''} Cualquier cambio me avisas 😊`
+    case 'mantener': return `Listo 😊 tu pedido sigue en pie${cuando ? ` para ${cuando}` : ''}. ¡Gracias por avisarnos!`
+    case 'pago': return `¡Recibimos tu pago! 🎉 Ya queda confirmado${cuando ? ` para ${cuando}` : ''}.`
+    case 'confirmado': return `Tu pedido quedó confirmado ✅${cuando ? ` Te lo entregamos ${cuando}.` : ''}`
+    case 'listo': return p.modalidad === 'domicilio' ? `Tu pedido ya está listo y pronto sale a tu dirección 🍪` : `Tu pedido ya está listo para recoger 🍪`
+    case 'en_ruta': return `Tu pedido va en camino 🛵 ¡Ya casi llega!`
+    case 'entregado': return `Tu pedido fue entregado. ¡Gracias por elegirnos, que lo disfrutes! 🍪💛`
     default: return null
   }
 }
