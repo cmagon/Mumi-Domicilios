@@ -140,12 +140,39 @@ export default function Chats() {
       <div className="col-chat">
         {sel === '__generales' ? <Generales onBack={() => abrir(null)} onCambio={cargar} />
           : sel ? <ChatView key={sel} telefono={sel} nombre={actual?.nombre_wa} onBack={() => abrir(null)}
-              resumen={actual?.ult_resumen && estadoDe(actual) !== 'venta' ? <div className="analisis-resumen">🧠 {actual.ult_resumen}{actual.ult_etapa ? ` (se cayó en: ${ETAPA[actual.ult_etapa] ?? actual.ult_etapa})` : ''}</div>
-                : actual?.ult_vendida ? <div className="analisis-resumen">✅ Venta cerrada · pedido #{actual.ult_pedido}</div> : undefined} />
+              resumen={<BannerAnalisis key={sel} b={actual} s={ses.find((x) => x.telefono === sel)} recargar={cargar} toast={toast} />} />
           : <div className="chat-vacio"><div style={{ fontSize: 48 }}>💬</div><p>Elige un chat para responder</p></div>}
       </div>
 
       <Analisis abierto={analisis} onClose={() => setAnalisis(false)} ses={ses} recargar={cargar} toast={toast} />
+    </div>
+  )
+}
+
+// Resumen de la IA para el chat. El análisis es por conversación; si el chat siguió después, queda "desactualizado" y se puede repetir.
+function BannerAnalisis({ b, s, recargar, toast }: { b?: B; s?: S; recargar: () => void; toast: ReturnType<typeof useToast> }) {
+  const [an, setAn] = useState<{ analizado_en: string; sugerencia: string | null } | null>(null)
+  const cargar = useCallback(() => {
+    if (!s) return
+    supabase.from('chats_analisis').select('analizado_en,sugerencia').eq('telefono', s.telefono).eq('sesion_inicio', s.inicio).maybeSingle().then(({ data }) => setAn(data))
+  }, [s?.telefono, s?.inicio]) // eslint-disable-line
+  useEffect(() => { cargar() }, [cargar, b?.ult_resumen])
+  if (!b || !s) return null
+  if (b.ult_vendida) return <div className="analisis-resumen">✅ Venta cerrada · pedido #{b.ult_pedido}</div>
+  const desact = an && new Date(s.fin).getTime() > new Date(an.analizado_en).getTime() + 60000
+  const analizar = async () => {
+    const { data, error } = await supabase.functions.invoke('analizar-chats', { body: { telefono: s.telefono, inicio: s.inicio } })
+    if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo analizar', 'err'); return false }
+    if (!data.analizadas) toast('No se pudo analizar (¿ya hubo una venta o faltan mensajes del cliente?)', 'info')
+    cargar(); recargar()
+  }
+  return (
+    <div className="analisis-resumen">
+      {b.ult_resumen ? <>🧠 {b.ult_resumen}{b.ult_etapa ? ` (se cayó en: ${ETAPA[b.ult_etapa] ?? b.ult_etapa})` : ''}
+        {an?.sugerencia && <div className="muted">💡 {an.sugerencia}</div>}
+        <div className="muted">{desact ? '⚠️ Desactualizado: el chat siguió después del análisis.' : an ? `Analizado ${hora(an.analizado_en)}.` : ''}</div></>
+        : <span className="muted">Aún sin análisis. Se hace solo unas 3 horas después de que termina la conversación.</span>}
+      <div style={{ marginTop: 4 }}><AsyncButton className="sec sm" okText="Analizado" onClick={analizar}>{b.ult_resumen ? '🔄 Volver a analizar' : '🧠 Analizar ahora'}</AsyncButton></div>
     </div>
   )
 }
