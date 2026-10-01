@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from './supabase'
 import { AsyncButton, useToast } from './ui'
 import PedidosCliente from './PedidosCliente'
+import { useConfig } from './hooks'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
@@ -24,6 +25,8 @@ function Contenido({ texto }: { texto: string }) {
 // Conversación tipo WhatsApp: historial en vivo, avisos del chat, tomar/devolver al bot y responder como persona.
 export default function ChatView({ telefono, nombre, onBack, resumen }: { telefono: string; nombre?: string | null; onBack?: () => void; resumen?: React.ReactNode }) {
   const toast = useToast()
+  const { cfg } = useConfig()
+  const minHumano = cfg.minutos_humano_sin_responder === '' || cfg.minutos_humano_sin_responder == null ? 5 : Number(cfg.minutos_humano_sin_responder)
   const [msgs, setMsgs] = useState<Msg[]>([])
   const [avisos, setAvisos] = useState<Aviso[]>([])
   const [conv, setConv] = useState<{ humano: boolean; humano_desde: string | null; nombre_wa: string | null } | null>(null)
@@ -120,7 +123,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         <AsyncButton className={humano ? '' : 'sec'} okText="" onClick={() => tomar(!humano)}>{humano ? '🤖 Devolver al bot' : '🙋 Tomar chat'}</AsyncButton>
       </div>
       <div className={`chat-modo ${humano ? 'hum' : ''}`}>
-        {humano ? 'Atiendes tú: el bot está en silencio en este chat.' : 'El bot atiende este chat. Si respondes, tomas la conversación.'}
+        {humano ? `Atiendes tú: el bot está en silencio${minHumano > 0 ? `, pero retoma el chat si tardas más de ${minHumano} min en responder` : ''}.` : 'El bot atiende este chat. Si respondes, tomas la conversación.'}
       </div>
       <div className="pestanas"><button className={!verPedidos ? 'on' : ''} onClick={() => setVerPedidos(false)}>💬 Chat</button>
         <button className={verPedidos ? 'on' : ''} onClick={() => setVerPedidos(true)}>📋 Pedidos{nActivos > 0 && <b>{nActivos}</b>}</button></div>
