@@ -16,7 +16,7 @@ export function lineas(o, ancho = 32) {
       : o.franja_horaria ? [{ t: `FRANJA: ${o.franja_horaria}`, bold: true, center: true }] : []),
     { t: sep },
     { t: o.cliente_nombre, bold: true }, { t: `Tel: ${o.cliente_telefono}` },
-    { t: o.modalidad === 'domicilio' ? `${o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida)' : 'DOMICILIO'}: ${o.direccion ?? ''}` : 'RECOGE EN PUNTO' },
+    { t: o.modalidad === 'domicilio' ? (o.direccion ? `${o.direccion_aprox ? 'DIRECCION APROX. (ubicacion compartida)' : 'DOMICILIO'}: ${o.direccion}` : 'DOMICILIO: DIRECCION POR CONFIRMAR - LLAMAR AL CLIENTE') : 'RECOGE EN PUNTO' },
     ...(o.modalidad === 'domicilio' && o.lat != null && o.lng != null ? [{ t: `MAPA: ${mapa(o)}` }, { qr: mapa(o) }] : [])]
   out.push({ t: sep })
   for (const i of o.pedido_items ?? []) out.push({ t: `${i.cantidad} x ${i.productos?.nombre ?? ''}`, bold: true })

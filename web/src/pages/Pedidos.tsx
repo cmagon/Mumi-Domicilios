@@ -5,7 +5,7 @@ import type { Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
 import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion } from '../ui'
 import ChatModal from '../ChatModal'
-import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
+import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, fechaCorta, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
 
 type Filtro = 'activos' | 'entregados' | 'cancelados' | 'archivados'
 const SELECT = '*, pedido_items(cantidad, producto_id, productos(nombre))'
@@ -60,6 +60,11 @@ export default function Pedidos() {
     window.addEventListener('click', cerrar)
     return () => window.removeEventListener('click', cerrar)
   }, [menu])
+
+  // Pedidos que el admin debe revisar antes de seguir: pago por transferencia sin verificar (los del bot sin comprobante) y domicilio sin dirección
+  const pagoPend = (o: Pedido) => !o.archivado && o.estado === 'recibido' && !o.pagado && !esEfectivo(o)
+  const sinDir = (o: Pedido) => o.modalidad === 'domicilio' && !o.direccion && o.lat == null
+  const porRevisar = useMemo(() => pedidos.filter((o) => !o.archivado && o.estado !== 'cancelado' && o.estado !== 'entregado' && (pagoPend(o) || sinDir(o))), [pedidos]) // eslint-disable-line
 
   // ---------- Filtros y conteos ----------
   const pertenece = (o: Pedido, f: Filtro) =>
@@ -148,6 +153,17 @@ export default function Pedidos() {
         <input style={{ marginTop: 8 }} placeholder="Buscar por #, nombre, teléfono o dirección" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
+      {filtro === 'activos' && porRevisar.length > 0 && (
+        <div className="card por-revisar">
+          <h3 style={{ margin: '0 0 6px' }}>⚠️ Por revisar antes de continuar ({porRevisar.length})</h3>
+          {porRevisar.map((o) => (
+            <div className="rev-fila" key={o.id}>
+              <div><b>#{o.numero} · {o.cliente_nombre}</b> · {cop(o.total)} · {fechaCorta(o.fecha_entrega)}
+                <div className="muted">{[pagoPend(o) && `⏳ Pago pendiente por ${o.metodo_pago ?? 'transferencia'}`, sinDir(o) && '📞 Falta la dirección: llamar al cliente'].filter(Boolean).join(' · ')}</div></div>
+              <button className="sec sm" onClick={() => setDetalle(o)}>Revisar</button>
+            </div>))}
+        </div>)}
+
       {grupos.map((g) => (
         <section key={g.fecha}>
           <div className="grupo-fecha"><h3>{etiquetaFecha(g.fecha === 'sin' ? null : g.fecha)}</h3><span className="muted">{g.total} pedido{g.total === 1 ? '' : 's'}</span></div>
@@ -166,6 +182,8 @@ export default function Pedidos() {
                         {o.origen === 'manual' && <span className="badge">manual</span>}{' '}
                         {o.hora_entrega_solicitada && <span className={`badge hora-pedida ${esUrgente(o) ? 'rojo' : ''}`}>🕒 {horaBonita(o.hora_entrega_solicitada)}</span>}
                         {esUrgente(o) && <span className="badge rojo">¡pronto!</span>}
+                        {pagoPend(o) && <span className="badge rojo">⏳ Pago pendiente</span>}
+                        {sinDir(o) && <span className="badge rojo">📞 Sin dirección</span>}
                         {o.pendiente_produccion && <span className="badge hora-pedida" title="Parte del pedido aún no está fabricada">🍪 Por producir</span>}
                       </div>
                       <div style={{ flex: 'none', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
@@ -186,7 +204,7 @@ export default function Pedidos() {
                     <p style={{ margin: '6px 0 2px' }}>{(o.pedido_items ?? []).map((i) => `${i.cantidad} ${i.productos?.nombre}`).join(' · ')}</p>
                     <p className="muted" style={{ margin: 0 }}>
                       {cop(o.total)} · {o.metodo_pago ?? 'sin método'} · {o.pagado ? <span style={{ color: '#1e7d32' }}>pagado</span> : esEfectivo(o) ? 'cobrar al entregar' : <span style={{ color: '#b00020' }}>sin pagar</span>}
-                      {' · '}{o.modalidad === 'domicilio' ? <>📍 {o.direccion ?? ''}{o.direccion_aprox ? ' (aprox.)' : ''}{o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank" onClick={(e) => e.stopPropagation()}>Ver mapa</a></>}</> : 'Recoge en punto'}
+                      {' · '}{o.modalidad === 'domicilio' ? <>📍 {o.direccion ?? 'dirección por confirmar'}{o.direccion_aprox ? ' (aprox.)' : ''}{o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank" onClick={(e) => e.stopPropagation()}>Ver mapa</a></>}</> : 'Recoge en punto'}
                     </p>
                     {o.nota && <p style={{ margin: '4px 0 0' }}><b>Nota:</b> {o.nota}</p>}
                     {!cancelado && (
