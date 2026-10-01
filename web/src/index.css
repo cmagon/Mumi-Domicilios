@@ -298,3 +298,9 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .selector-fecha { text-transform: capitalize; width: 100%; text-align: left; }
 
 .regla { padding: 8px 0; border-top: 1px solid var(--bd); display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+
+.tarjeta-ubicacion { cursor: default; }
+.ubic-fila { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+.ubic-qr { width: 84px; height: 84px; border-radius: 6px; background: #fff; display: block; }
+.ubic-link { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 12px; word-break: break-all; }
+.ubic-link a:first-child { font-weight: 700; font-size: 14px; }
