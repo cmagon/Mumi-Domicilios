@@ -148,9 +148,11 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       const fecha = pedida ?? (modoHoy ? hoy : proxima)
       if (!fecha) return { error: 'No hay días de producción configurados' }
       const filas = fecha === hoy ? filasHoy : await resumen(fecha)
+      // Fecha futura = día de producción: se hornea de nuevo, así que (si las reservas lo permiten) todos los sabores se ofrecen aunque el stock registrado sea 0
+      const seProduce = !modoHoy && cfg.permitir_reserva_sin_stock !== 'no'
       const sabores = filas.filter((r) => r.activo).map((r) => {
         const cant = modoHoy ? Number(r.extras_dia) : Number(r.disponible_general)
-        return { sabor: r.nombre as string, disponible: cant > 0, cantidad_disponible: cant }
+        return { sabor: r.nombre as string, disponible: cant > 0 || seProduce, cantidad_disponible: cant, ...(seProduce && cant <= 0 ? { se_produce_para_esa_fecha: true } : {}) }
       })
       const faltantes = sabores.filter((x) => !x.disponible).map((x) => x.sabor)
       let agendables: unknown = null
@@ -171,7 +173,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         de_esos_se_pueden_agendar_para_la_siguiente_fecha: agendables, sin_stock_por_ahora: sinStock,
         proxima_produccion: (modoHoy ? proxima : fecha) ? { fecha: modoHoy ? proxima : fecha, cuando_decirlo: etiqueta((modoHoy ? proxima : fecha) as string) } : null,
         reserva_sin_stock_permitida: cfg.permitir_reserva_sin_stock !== 'no',
-        nota: 'Si el cliente quiere un sabor que está en sin_stock_por_ahora NO pierdas la venta: dile que se producirán más para proxima_produccion y ofrécele dejárselo reservado (si reserva_sin_stock_permitida) o avisarle; llama registrar_agotado. Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado".',
+        nota: 'Si modo=agendar, esa fecha es un día de producción: se hornea de nuevo, así que ofrece TODOS los sabores de sabores_disponibles_para_esa_fecha como disponibles para esa fecha (aunque cantidad_disponible sea 0) y NUNCA digas que no hay sabores ni que "no quedan". No ofrezcas "avisarle cuando haya": ofrece reservar. Si el cliente quiere un sabor que está en sin_stock_por_ahora NO pierdas la venta: dile que se producirán más para proxima_produccion y ofrécele dejárselo reservado (si reserva_sin_stock_permitida) o avisarle; llama registrar_agotado. Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado".',
       }
     }
     case 'consultar_tarifa_domicilio': {
