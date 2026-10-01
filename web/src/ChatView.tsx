@@ -16,6 +16,8 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const [conv, setConv] = useState<{ humano: boolean; humano_desde: string | null; nombre_wa: string | null } | null>(null)
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [texto, setTexto] = useState('')
+  const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
+  const archivo = useRef<HTMLInputElement>(null)
   const [ahora, setAhora] = useState(Date.now())
   const fin = useRef<HTMLDivElement>(null)
   const area = useRef<HTMLTextAreaElement>(null)
@@ -59,12 +61,31 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const restante = `${Math.floor(restanteMs / 3600000)} h ${Math.floor((restanteMs % 3600000) / 60000)} min`
   const humano = !!conv?.humano
 
+  // Reduce la foto (máx. 1600 px, JPEG) para que suba y llegue rápido
+  const elegirFoto = async (f: File | undefined) => {
+    if (!f) return
+    try {
+      const bmp = await createImageBitmap(f)
+      const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height))
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k)
+      c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height)
+      const blob = await new Promise<Blob>((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error('x'))), 'image/jpeg', 0.85))
+      setFoto({ blob, url: URL.createObjectURL(blob) })
+    } catch { toast('No se pudo leer la imagen', 'err') }
+    if (archivo.current) archivo.current.value = ''
+  }
   const enviar = async () => {
     const t = texto.trim()
-    if (!t) return false
-    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, texto: t } })
+    if (!t && !foto) return false
+    let imagen_path: string | undefined
+    if (foto) {
+      imagen_path = `salientes/${telefono}/${Date.now()}.jpg`
+      const { error: eu } = await supabase.storage.from('comprobantes').upload(imagen_path, foto.blob, { contentType: 'image/jpeg' })
+      if (eu) { toast(`No se pudo subir la foto: ${eu.message}`, 'err'); return false }
+    }
+    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, texto: t, imagen_path } })
     if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo enviar', 'err'); return false }
-    setTexto(''); area.current?.focus(); cargar()
+    setTexto(''); setFoto(null); if (area.current) area.current.style.height = 'auto'; area.current?.focus(); cargar()
   }
   const tomar = async (v: boolean) => {
     const { error } = await supabase.from('conversaciones').upsert({ telefono, humano: v, humano_desde: v ? new Date().toISOString() : null }, { onConflict: 'telefono' })
@@ -125,11 +146,14 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         {abierta ? (
           <>
             <div className="rapidas">{RAPIDAS.map((r) => <button key={r} className="chip" onClick={() => { setTexto((t) => (t ? t + ' ' : '') + r); area.current?.focus() }}>{r}</button>)}</div>
+            {foto && <div className="foto-prev"><img src={foto.url} alt="Vista previa" /><button className="ghost" onClick={() => setFoto(null)} aria-label="Quitar foto">✕</button><span className="muted">El texto se envía como pie de la foto</span></div>}
             <div className="compositor">
+              <input ref={archivo} type="file" accept="image/*" hidden onChange={(e) => elegirFoto(e.target.files?.[0])} />
+              <button className="sec adjuntar" aria-label="Adjuntar foto" onClick={() => archivo.current?.click()}>📷</button>
               <textarea ref={area} rows={1} placeholder="Escribe un mensaje" value={texto}
                 onChange={(e) => { setTexto(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 900) { e.preventDefault(); void enviar() } }} />
-              <AsyncButton className="enviar" okText="" onClick={enviar} disabled={!texto.trim()}>➤</AsyncButton>
+              <AsyncButton className="enviar" okText="" onClick={enviar} disabled={!texto.trim() && !foto}>➤</AsyncButton>
             </div>
             <div className="muted ventana">Puedes responder libremente durante {restante} más (ventana de 24 h de WhatsApp).</div>
           </>

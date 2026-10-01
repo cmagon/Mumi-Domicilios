@@ -245,3 +245,6 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .ventana { font-size: 11px; margin-top: 4px; text-align: center; }
 .ventana-cerrada { padding: 12px; font-size: 13px; color: #6b4a00; background: #fff0c2; border-radius: 10px; }
 .analisis-resumen { margin: 6px 10px; padding: 8px 10px; background: #f3f0ff; border-radius: 10px; font-size: 13px; }
+.compositor .adjuntar { border-radius: 50%; width: 42px; height: 42px; min-width: 42px; padding: 0; font-size: 18px; flex: none; }
+.foto-prev { display: flex; align-items: center; gap: 8px; padding: 4px 2px 8px; font-size: 12px; }
+.foto-prev img { height: 64px; border-radius: 8px; }
