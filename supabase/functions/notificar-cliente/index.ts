@@ -35,11 +35,11 @@ Deno.serve(async (req) => {
   if (perfil?.rol !== 'admin') return json({ ok: false, error: 'Sin permiso' }, 403)
 
   const { pedido_id, evento } = await req.json().catch(() => ({}))
-  const { data: p } = await sb.from('pedidos').select('numero,chat_telefono,metodo_pago,modalidad,pagado,fecha_entrega,franja_horaria,hora_entrega_solicitada').eq('id', pedido_id).maybeSingle()
+  const { data: p } = await sb.from('pedidos').select('avisar_cliente,numero,chat_telefono,metodo_pago,modalidad,pagado,fecha_entrega,franja_horaria,hora_entrega_solicitada').eq('id', pedido_id).maybeSingle()
   if (!p) return json({ ok: false, error: 'Pedido no encontrado' }, 404)
   if (!p.chat_telefono) return json({ ok: true, enviado: false, motivo: 'pedido manual (sin chat de WhatsApp)' })
-  const { data: c } = await sb.from('config').select('valor').eq('clave', 'avisar_cliente_cambios').maybeSingle()
-  if (c?.valor === 'no') return json({ ok: true, enviado: false, motivo: 'avisos al cliente desactivados' })
+  // Los cambios de estado solo se avisan si el pedido tiene activado el interruptor (el aviso de "pedido tomado" lo decide el admin al crearlo)
+  if (evento !== 'tomado' && !p.avisar_cliente) return json({ ok: true, enviado: false, motivo: 'avisos desactivados en este pedido' })
   const texto = mensaje(String(evento), p)
   if (!texto) return json({ ok: false, error: 'Evento no válido' }, 400)
 

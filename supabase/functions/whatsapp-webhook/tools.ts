@@ -3,6 +3,7 @@ import type { Tool, Provider } from './ai.ts'
 import { leerComprobante } from './ai.ts'
 import { notify } from './wa.ts'
 import { bloqueosPorEventos } from './avisos.ts'
+import { horaHablada } from './texto.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -41,7 +42,7 @@ export function cierreEntregas(franjas: string): { min: number; texto: string } 
   if (!fines.length) return null
   const min = Math.max(...fines)
   const h = Math.floor(min / 60), m = min % 60
-  return { min, texto: `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h >= 12 ? 'p. m.' : 'a. m.'}` }
+  return { min, texto: horaHablada(h, m) }
 }
 // Primera fecha de entrega posible: hoy si es día de producción y aún se toman pedidos (hasta `margen` min antes del cierre); si no, la próxima producción.
 export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string, margen = 60, ex?: Excepciones) {
@@ -95,12 +96,14 @@ export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, d
 export type Ctx = {
   sb: SupabaseClient; cfg: Record<string, string>; telefono: string; prov: Provider
   comprobantePath?: string | null; comprobanteOk?: boolean; referencia?: string | null; humano?: boolean
-  fotos?: { link: string; caption: string }[]; pendiente?: string | null; pedidoCreado?: boolean; errorPedido?: string
+  fotos?: { link: string; caption: string; tipo?: 'image' | 'video' }[]; enviarLocal?: boolean; pendiente?: string | null; pedidoCreado?: boolean; errorPedido?: string
 }
 
 export const TOOLS: Tool[] = [
-  { name: 'consultar_catalogo', description: 'Lista los sabores activos con descripción y precio. Con enviar_fotos=true deja listas las fotos para enviarlas en el punto donde escribas [[FOTOS]]; úsalo SOLO si el cliente aceptó que se las envíes.',
-    parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean' } } } },
+  { name: 'consultar_catalogo', description: 'Lista los sabores activos con descripción y precio. Con enviar_fotos=true deja listas las fotos PRINCIPALES (una por sabor) para enviarlas en el punto donde escribas [[FOTOS]]; úsalo SOLO si el cliente aceptó que se las envíes. Si el cliente pide MÁS fotos o videos de un sabor, usa mas_fotos_de con el nombre del sabor (envía las demás, sin repetir la principal).',
+    parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean' }, mas_fotos_de: { type: 'string', description: 'Sabor del que el cliente pide más fotos o videos' } } } },
+  { name: 'enviar_ubicacion_local', description: 'Cuando el cliente pregunta dónde estamos, cómo llegar o pide la ubicación: envía el pin del local (o el enlace al mapa) y devuelve la dirección. Dile además que por ahora solo fabricamos ahí (no hay punto de venta ni atención en sitio, salvo que el cliente recoja su pedido).',
+    parameters: { type: 'object', properties: {} } },
   { name: 'marcar_pendiente', description: 'Registra qué está esperando el bot del cliente (comprobante de pago, dirección, sabores/cantidad, confirmación del total). Si el cliente no responde, el sistema le enviará un recordatorio.',
     parameters: { type: 'object', properties: { que: { type: 'string', description: 'Qué falta, con detalle (ej. comprobante de $34.000 por Nequi)' } }, required: ['que'] } },
   { name: 'consultar_stock', description: 'Disponibilidad para la próxima fecha de entrega (hoy si es día de producción y hay horario; si no, la siguiente producción): qué sabores hay, cuántas quedan de cada uno, cuáles están agotados y cómo decir la fecha. SIEMPRE úsala antes de ofrecer o confirmar sabores.',
@@ -168,10 +171,31 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
   const ex = await cargarExcepciones(sb)
   switch (name) {
     case 'consultar_catalogo': {
-      const { data } = await sb.from('productos').select('nombre,descripcion,detalles,precio,foto_url').eq('activo', true).order('nombre')
+      const { data } = await sb.from('productos').select('id,nombre,descripcion,detalles,precio,foto_url').eq('activo', true).order('nombre')
+      const { data: medios } = await sb.from('producto_medios').select('producto_id,url,tipo,principal,orden').order('orden')
+      const de = (id: string) => (medios ?? []).filter((m) => m.producto_id === id)
+      if (a.mas_fotos_de) {
+        const q = sinAcento(String(a.mas_fotos_de))
+        const p = (data ?? []).find((x) => sinAcento(x.nombre).includes(q) || q.includes(sinAcento(x.nombre).split(' ')[0]))
+        if (!p) return { ok: false, error: 'No encontré ese sabor' }
+        const ms = de(p.id)
+        const principal = ms.find((m) => m.principal) ?? ms.find((m) => m.tipo === 'image')
+        const resto = ms.filter((m) => m !== principal)
+        if (!resto.length) return { ok: true, hay_mas: false, nota: `No hay más fotos ni videos de ${p.nombre}. Díselo con naturalidad.` }
+        ctx.fotos = resto.map((m) => ({ link: m.url as string, caption: p.nombre, tipo: m.tipo === 'video' ? 'video' as const : 'image' as const }))
+        return { ok: true, hay_mas: true, cantidad: resto.length, nota: 'Escribe una frase breve y [[FOTOS]] en un párrafo aparte para enviarlas.' }
+      }
       if (a.enviar_fotos === true)
-        ctx.fotos = (data ?? []).filter((p) => p.foto_url).map((p) => ({ link: p.foto_url as string, caption: `${p.nombre} — $${p.precio}` }))
-      return (data ?? []).map(({ nombre, descripcion, detalles, precio }) => ({ nombre, descripcion, detalles: detalles || null, precio, nota: 'Solo puedes afirmar lo que dicen descripcion y detalles; si falta un dato, no lo inventes.' }))
+        ctx.fotos = (data ?? []).map((p) => {
+          const ms = de(p.id); const pr = ms.find((m) => m.principal && m.tipo === 'image') ?? ms.find((m) => m.tipo === 'image')
+          return { link: (pr?.url ?? p.foto_url) as string, caption: `${p.nombre} — $${p.precio}`, tipo: 'image' as const }
+        }).filter((f) => f.link)
+      return (data ?? []).map(({ id, nombre, descripcion, detalles, precio }) => ({ nombre, descripcion, detalles: detalles || null, precio, fotos_o_videos_extra: Math.max(0, de(id).length - 1), nota: 'Solo puedes afirmar lo que dicen descripcion y detalles; si falta un dato, no lo inventes. Si fotos_o_videos_extra > 0 puedes ofrecer enviar más.' }))
+    }
+    case 'enviar_ubicacion_local': {
+      ctx.enviarLocal = true
+      const dir = cfg.local_direccion || 'Cra 19d No. 21-35, Barrio La Granja'
+      return { ok: true, direccion: dir, instruccion: `Envía la dirección (${dir}) y dile que te mandas el pin / enlace del mapa. Aclara que por ahora solo fabricamos ahí (es nuestro punto de producción, sin atención al público); si quiere pasar por su pedido, debe haberlo hecho antes.` }
     }
     case 'consultar_stock': {
       const e = await estadoEntrega(sb, cfg, ex)
@@ -218,7 +242,8 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     }
     case 'consultar_tarifa_domicilio': {
       const { data } = await sb.from('tarifas_domicilio').select('nombre,valor').eq('activo', true)
-      return data
+      const nogo = (cfg.barrios_sin_domicilio ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+      return { tarifas: data, barrios_sin_domicilio: nogo, nota: nogo.length ? `NO hacemos domicilio en estos barrios/zonas: ${nogo.join(', ')}. Si la dirección del cliente está ahí, díselo con amabilidad y ofrécele recoger en el local.` : null }
     }
     case 'registrar_agotado': {
       const { data: p } = await sb.from('productos').select('id').ilike('nombre', `%${a.sabor}%`).limit(1).maybeSingle()
@@ -287,6 +312,8 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         notas.push(`Pago: ${p.metodo_pago} → ${a.metodo_pago}`)
       }
       if (a.direccion) {
+        const nogo = barrioSinDomicilio(cfg, a.direccion)
+        if (nogo) return { ok: false, error: `En ${nogo} no hacemos domicilio. Díselo con amabilidad y ofrécele recoger en el local.` }
         cambios.direccion = a.direccion; notas.push('Dirección actualizada')
         if (a.ubicacion_compartida) {
           const { data: cv } = await sb.from('conversaciones').select('ultima_lat,ultima_lng').eq('telefono', ctx.telefono).maybeSingle()
@@ -356,6 +383,12 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
   return { error: 'herramienta desconocida' }
 }
 
+// ¿La dirección cae en un barrio sin domicilio (Configuración)?
+function barrioSinDomicilio(cfg: Record<string, string>, ...textos: (string | null | undefined)[]): string | null {
+  const t = sinAcento(textos.filter(Boolean).join(' '))
+  return (cfg.barrios_sin_domicilio ?? '').split(',').map((x) => x.trim()).filter(Boolean).find((b) => t.includes(sinAcento(b))) ?? null
+}
+
 async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const { sb, cfg } = ctx
   const hoy = fechaBogota()
@@ -371,6 +404,10 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   if (fecha === hoy && cierre && minutosAhora() >= cierre.min - margen)
     return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes del cierre de entregas); ofrece la próxima fecha de entrega` }
 
+  if (a.modalidad === 'domicilio') {
+    const nogo = barrioSinDomicilio(cfg, a.direccion, a.nota)
+    if (nogo) return { ok: false, error: `En ${nogo} no hacemos domicilio. Díselo con amabilidad y ofrécele recoger en el local.` }
+  }
   // Datos anómalos
   const lista: any[] = Array.isArray(a.items) ? a.items : []
   if (!lista.length || lista.some((i) => !Number.isInteger(Number(i.cantidad)) || Number(i.cantidad) < 1 || Number(i.cantidad) > 500))
