@@ -3,8 +3,9 @@ import { supabase } from '../supabase'
 import { cop } from '../hooks'
 import type { Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
-import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion } from '../ui'
+import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 import ChatModal from '../ChatModal'
+import HoraPicker from '../HoraPicker'
 import { avisarCliente, EVENTO_PASO, type EventoCliente } from '../avisarCliente'
 import { SelectorFecha } from '../Calendario'
 import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, fechaCorta, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
@@ -231,6 +232,11 @@ export default function Pedidos() {
                         <div className="barra" style={{ width: `${(paso / (PASOS.length - 1)) * 100}%` }} />
                         {PASOS.map((p, i) => <div key={p.id} className={`paso ${i < paso ? 'hecho' : ''} ${i === paso ? 'actual' : ''}`}><i /><span>{p.label}</span></div>)}
                       </div>)}
+                    {o.chat_telefono && !cancelado && o.estado !== 'entregado' && (
+                      <div className={`aviso-wa ${o.avisar_cliente ? '' : 'off'}`}>
+                        <span>💬 Avisar al cliente los cambios de estado</span>
+                        <Switch color="verde" checked={!!o.avisar_cliente} onChange={(v) => actualizar(o.id, { avisar_cliente: v }).then((ok) => ok && toast(v ? 'Se avisará al cliente por WhatsApp en cada paso' : 'Ya no se avisa al cliente de los cambios', 'info'))} />
+                      </div>)}
                     <div className="acciones">
                       {cancelado
                         ? <span className="badge rojo">Cancelado</span>
@@ -290,7 +296,7 @@ function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar,
       {!editable && <p className="muted">El ticket ya se imprimió: puedes ajustar hora, nota y dirección, pero reimprime el ticket para que salga actualizado.</p>}
       <div className="row">
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => setF({ ...f, fecha: v })} /></div>
-        <div><label>Hora pedida por el cliente</label><input type="time" value={f.hora} onChange={(e) => setF({ ...f, hora: e.target.value })} /></div>
+        <div><label>Hora pedida por el cliente</label><HoraPicker valor={f.hora} onChange={(v) => setF({ ...f, hora: v })} placeholder="Sin hora" /></div>
       </div>
       <label>Franja horaria</label><input placeholder="ej. 14:00-16:00" value={f.franja} onChange={(e) => setF({ ...f, franja: e.target.value })} />
       <label>Dirección{o.direccion_aprox ? ' (aproximada, por ubicación compartida)' : ''}</label>

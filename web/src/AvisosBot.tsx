@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { hoy } from './hooks'
 import { AsyncButton, Modal, Switch, useToast } from './ui'
+import HoraPicker from './HoraPicker'
 
 export type AvisoBot = { id: string; tipo: 'evento' | 'instruccion'; texto: string; fecha_desde: string | null; fecha_hasta: string | null; hora_desde: string | null; hora_hasta: string | null; bloquea_entregas: boolean; estado: string }
 const vacio = { tipo: 'evento' as 'evento' | 'instruccion', texto: '', desde: '', hasta: '', hd: '', hh: '', bloquea: false }
@@ -44,8 +45,8 @@ export function AvisoModal({ abierto, fecha, onClose, onGuardado }: { abierto: b
         <div><label>Hasta</label><input type="date" min={f.desde || hoy()} value={f.hasta} onChange={(e) => set('hasta', e.target.value)} /></div>
       </div>
       <div className="row">
-        <div><label>Hora inicio</label><input type="time" value={f.hd} onChange={(e) => set('hd', e.target.value)} /></div>
-        <div><label>Hora fin</label><input type="time" value={f.hh} onChange={(e) => set('hh', e.target.value)} /></div>
+        <div><label>Hora inicio</label><HoraPicker valor={f.hd} onChange={(v) => set('hd', v)} placeholder="Inicio" /></div>
+        <div><label>Hora fin</label><HoraPicker valor={f.hh} onChange={(v) => set('hh', v)} placeholder="Fin" /></div>
       </div>
       {f.tipo === 'evento' && <Switch checked={f.bloquea} onChange={(v) => set('bloquea', v)} label="Ese día NO hay entregas (el bot no agenda pedidos para esa fecha)" />}
       <p className="muted">Pasada la fecha (y la hora de fin), el bot deja de mencionarlo solo. {f.tipo === 'instruccion' && !f.hasta ? 'Sin fecha final queda vigente hasta que lo quites.' : ''}</p>

@@ -5,6 +5,7 @@ import type { Producto } from './types'
 import { AsyncButton, Modal, Switch, useToast } from './ui'
 import { SelectorFecha, useCalendario } from './Calendario'
 import { avisarCliente } from './avisarCliente'
+import HoraPicker from './HoraPicker'
 
 type Item = { producto_id: string; cantidad: number }
 const sin57 = (t: string) => t.replace(/\D/g, '').replace(/^57(?=\d{10}$)/, '')
@@ -108,7 +109,7 @@ export default function TomarPedido({ telefono, nombre, abierto, onClose }: { te
       <button type="button" className="sec sm" onClick={() => setItems([...items, { producto_id: '', cantidad: 1 }])}>+ otro sabor</button>
       <div className="row">
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => set('fecha', v)} /></div>
-        <div><label>Hora pedida</label><input type="time" value={f.hora} onChange={(e) => set('hora', e.target.value)} /></div>
+        <div><label>Hora pedida</label><HoraPicker valor={f.hora} onChange={(v) => set('hora', v)} placeholder="Sin hora" /></div>
       </div>
       {franjas.length > 0 && <><label>Franja</label><select value={f.franja} onChange={(e) => set('franja', e.target.value)}><option value="">— sin franja —</option>{franjas.map((x) => <option key={x}>{x}</option>)}</select></>}
       <label>Modalidad</label><select value={f.modalidad} onChange={(e) => set('modalidad', e.target.value)}><option value="domicilio">Domicilio</option><option value="recoger">Recoger</option></select>

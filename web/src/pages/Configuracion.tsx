@@ -3,18 +3,22 @@ import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
 import AprendizajeBot from '../AprendizajeBot'
 import AvisosBot from '../AvisosBot'
+import { sonidoActivo, setSonidoActivo, tono } from '../sonido'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
 type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string; activo: boolean }
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'minutos_humano_sin_responder', 'proveedor_ia', 'motor_audio',
-  'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'avisar_cliente_cambios', 'seguimiento_1_min',
+  'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'local_nombre', 'local_direccion', 'local_lat', 'local_lng', 'barrios_sin_domicilio', 'seguimiento_1_min',
   'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'permitir_reserva_sin_stock', 'logo_url']
 
 export default function Configuracion() {
   const toast = useToast()
   const { cfg, save } = useConfig()
   const [f, setF] = useState<Record<string, string>>({})
+  const [sec, setSec] = useState<string | null>(null)
+  const [sonidoOn, setSonidoOn] = useState(sonidoActivo())
+  const cambiarSonido = (v: boolean) => { setSonidoActivo(v); setSonidoOn(v); if (v) tono() }
   const [metodos, setMetodos] = useState<M[]>([])
   const [hist, setHist] = useState<H[]>([])
   const [keys, setKeys] = useState<Record<string, string>>({ claude: '', openai: '', gemini: '' })
@@ -89,7 +93,24 @@ export default function Configuracion() {
 
   return (
     <>
-      <div className="card"><h2>Bot</h2>
+      <h2 style={{ margin: '4px 0 10px' }}>Configuración</h2>
+      <div className="tiles">
+        <button className="tile" onClick={() => setSec('bot')}><span className="tile-ico">🤖</span><b>Bot e IA</b><span className="muted">Proveedor, claves, prompt y versiones</span></button>
+        <button className="tile" onClick={() => setSec('avisos')}><span className="tile-ico">📣</span><b>Avisos temporales</b><span className="muted">Eventos e instrucciones con fecha</span></button>
+        <button className="tile" onClick={() => setSec('pagos')}><span className="tile-ico">💳</span><b>Métodos de pago</b><span className="muted">Cuentas y efectivo</span></button>
+        <button className="tile" onClick={() => setSec('comp')}><span className="tile-ico">💬</span><b>Comportamiento y seguimiento</b><span className="muted">Escritura natural, recordatorios, pedidos grandes</span></button>
+        <button className="tile" onClick={() => setSec('oper')}><span className="tile-ico">🗓</span><b>Operación</b><span className="muted">Días de producción, franjas, reservas</span></button>
+        <button className="tile" onClick={() => setSec('local')}><span className="tile-ico">📍</span><b>Local y zonas</b><span className="muted">Dirección, pin y barrios sin domicilio</span></button>
+        <button className="tile" onClick={() => setSec('equipo')}><span className="tile-ico">👥</span><b>Equipo y números</b><span className="muted">Admins, domiciliario, atención humana</span></button>
+        <button className="tile" onClick={() => setSec('marca')}><span className="tile-ico">🎨</span><b>Marca y notificaciones</b><span className="muted">Logo, ícono de la app y sonido</span></button>
+        <button className="tile" onClick={() => setSec('aprende')}><span className="tile-ico">🧠</span><b>Aprendizaje del bot</b><span className="muted">Reglas propuestas por la IA</span></button>
+        <button className="tile" onClick={() => setSec('respaldos')}><span className="tile-ico">💾</span><b>Respaldos</b><span className="muted">Copias del prompt, modelo y reglas</span></button>
+      </div>
+
+      <Modal abierto={sec === 'bot'} titulo="🤖 Bot e IA" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'bot' && (<>
+<div>
         <label>Proveedor de IA (chat y lectura de comprobantes)</label>
         <select value={f.proveedor_ia ?? 'gemini'} onChange={(e) => set('proveedor_ia', e.target.value)}>
           <option value="gemini">Gemini (pruebas, capa gratuita)</option><option value="claude">Claude</option><option value="openai">OpenAI</option></select>
@@ -113,11 +134,19 @@ export default function Configuracion() {
             <button className="sec sm" onClick={() => { set('system_prompt', h.valor_anterior); toast('Versión cargada: guarda para aplicarla', 'info') }}>Restaurar</button></div>))}</details>}
       </div>
 
-      <AvisosBot />
 
-      <AprendizajeBot />
-
-      <div className="card"><h2>Métodos de pago</h2>
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'avisos'} titulo="📣 Avisos temporales" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'avisos' && (<>
+<AvisosBot />
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'pagos'} titulo="💳 Métodos de pago" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'pagos' && (<>
+<div>
         <p className="muted">Solo estos medios (y el efectivo, si está habilitado) los ofrece el bot. Nombre y número son obligatorios; el tipo de cuenta es opcional.</p>
         <Switch checked={efectivo} onChange={alternarEfectivo} label="Aceptar efectivo contraentrega" />
         {metodos.map((m) => (
@@ -130,7 +159,13 @@ export default function Configuracion() {
         <div style={{ marginTop: 10 }}><button className="sec" onClick={() => { setErr({}); setEd({ id: '', nombre: '', numero_cuenta: '', tipo_cuenta: '' }) }}>+ Agregar método</button></div>
       </div>
 
-      <div className="card"><h2>Comportamiento natural y seguimiento</h2>
+
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'comp'} titulo="💬 Comportamiento y seguimiento" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'comp' && (<>
+<div>
         <label>Número de atención personalizada (el bot lo da cuando no puede ayudar; ej. 573001234567)</label>
         <input value={f.numero_atencion ?? ''} onChange={(e) => set('numero_atencion', e.target.value)} />
         <label>Pedidos grandes: desde cuántas galletas en un pedido el bot consulta con el admin (por defecto 30)</label>
@@ -140,7 +175,6 @@ export default function Configuracion() {
         <input type="number" min={5} value={f.velocidad_escritura_ms ?? '35'} onChange={(e) => set('velocidad_escritura_ms', e.target.value)} />
         <label>Segundos de espera antes de responder, por si el cliente sigue escribiendo (0 = responder ya)</label>
         <input type="number" min={0} value={f.espera_agrupar_seg ?? '4'} onChange={(e) => set('espera_agrupar_seg', e.target.value)} />
-        <Switch checked={(f.avisar_cliente_cambios ?? 'si') !== 'no'} onChange={(v) => set('avisar_cliente_cambios', v ? 'si' : 'no')} label="Avisar al cliente por WhatsApp cuando cambio el estado de su pedido (confirmado, listo, en camino, entregado, cancelado)" />
         <Switch checked={(f.seguimiento_activo ?? 'si') !== 'no'} onChange={(v) => set('seguimiento_activo', v ? 'si' : 'no')} label="Recordatorios automáticos si el cliente no responde" />
         <div className="row">
           <div><label>1.er recordatorio (minutos)</label><input type="number" min={5} value={f.seguimiento_1_min ?? '10'} onChange={(e) => set('seguimiento_1_min', e.target.value)} /></div>
@@ -151,24 +185,73 @@ export default function Configuracion() {
         <p className="muted">WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</p>
       </div>
 
-      <div className="card"><h2>Operación</h2>
+
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'oper'} titulo="🗓 Operación" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'oper' && (<>
+<div>
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />
         <label>Franjas horarias de entrega (separadas por coma)</label><input value={f.franjas_entrega ?? ''} onChange={(e) => set('franjas_entrega', e.target.value)} />
         <label>Pedidos para el mismo día: minutos de anticipación antes del cierre de entregas (por defecto 60)</label>
         <input type="number" min={0} value={f.anticipacion_minima_min ?? '60'} onChange={(e) => set('anticipacion_minima_min', e.target.value)} />
         <Switch checked={(f.permitir_reserva_sin_stock ?? 'si') !== 'no'} onChange={(v) => set('permitir_reserva_sin_stock', v ? 'si' : 'no')} label="Si no hay stock, dejar el pedido reservado para la siguiente producción (y avisarme)" />
+      </div>
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'local'} titulo="📍 Local y zonas" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'local' && (<>
+<div>
+        <label>Nombre del local</label><input value={f.local_nombre ?? ''} onChange={(e) => set('local_nombre', e.target.value)} />
+        <label>Dirección del local (la que el bot da al cliente)</label><input value={f.local_direccion ?? ''} onChange={(e) => set('local_direccion', e.target.value)} />
+        <div className="row">
+          <div><label>Latitud (pin del mapa)</label><input inputMode="decimal" value={f.local_lat ?? ''} onChange={(e) => set('local_lat', e.target.value)} /></div>
+          <div><label>Longitud</label><input inputMode="decimal" value={f.local_lng ?? ''} onChange={(e) => set('local_lng', e.target.value)} /></div></div>
+        <button type="button" className="sec" onClick={() => navigator.geolocation?.getCurrentPosition((p) => { set('local_lat', p.coords.latitude.toFixed(6)); set('local_lng', p.coords.longitude.toFixed(6)); toast('Ubicación actual tomada: guarda para aplicarla', 'info') }, () => toast('No se pudo obtener la ubicación (permite el acceso en el navegador)', 'err'))}>📍 Usar mi ubicación actual</button>
+        <p className="muted">Si pones las coordenadas, el bot envía un pin de WhatsApp; si no, un enlace al mapa con la dirección. Tip: estando en el local, usa el botón.</p>
+        <label>Barrios o zonas donde NO hacemos domicilio (separados por coma)</label>
+        <textarea style={{ minHeight: 70 }} placeholder="ej. La Esperanza, El Resbalón, vereda Tierra Grande" value={f.barrios_sin_domicilio ?? ''} onChange={(e) => set('barrios_sin_domicilio', e.target.value)} />
+        <p className="muted">Si la dirección del cliente contiene alguno de estos nombres, el bot le dice que ahí no hay domicilio y le ofrece recoger.</p>
+      </div>
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'equipo'} titulo="👥 Equipo y números" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'equipo' && (<>
+<div>
         <label>Números admin autorizados (WhatsApp, separados por coma)</label><input value={f.admin_numeros ?? ''} onChange={(e) => set('admin_numeros', e.target.value)} />
         <label>Si tardas más de estos minutos en responder a un cliente que atiendes tú, el bot retoma el chat (0 = nunca; por defecto 5)</label><input type="number" min={0} value={f.minutos_humano_sin_responder ?? '5'} onChange={(e) => set('minutos_humano_sin_responder', e.target.value)} />
         <label>Horas de atención humana antes de que el bot se reactive solo (por defecto 12)</label><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
         <label>Número del domiciliario (WhatsApp, con indicativo, ej. 573001234567)</label><input value={f.domiciliario_numero ?? ''} onChange={(e) => set('domiciliario_numero', e.target.value)} />
+      </div>
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'marca'} titulo="🎨 Marca y notificaciones" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'marca' && (<>
+<div>
         <label>Logo del micrositio</label>{f.logo_url && <img className="thumb" src={f.logo_url} alt="logo" />}
         <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && logo(e.target.files[0])} />
+        <p className="muted">Este mismo logo se usa en el encabezado, como ícono de la app instalada y como favicon. Mejor una imagen cuadrada (mín. 512 px).</p>
+        <Switch checked={sonidoOn} onChange={cambiarSonido} label="Sonido de notificaciones en este dispositivo (nuevo mensaje de cliente o aviso)" />
+        <button type="button" className="sec" onClick={() => tono()}>🔔 Probar sonido</button>
       </div>
-
-      <div className="barra-guardar">
-        <span className="muted">{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span>
-        <AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar configuración</AsyncButton>
-      </div>
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'aprende'} titulo="🧠 Aprendizaje del bot" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'aprende' && (<>
+<AprendizajeBot parte="reglas" />
+        </>)}
+      </Modal>
+      <Modal abierto={sec === 'respaldos'} titulo="💾 Respaldos" onClose={() => setSec(null)} ancho={560}
+        pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
+        {sec === 'respaldos' && (<>
+<AprendizajeBot parte="respaldos" />
+        </>)}
+      </Modal>
 
       <Modal abierto={!!ed} titulo={ed?.id ? 'Editar método de pago' : 'Nuevo método de pago'} onClose={() => setEd(null)} ancho={420}
         pie={<><button className="sec" onClick={() => setEd(null)}>Cancelar</button><AsyncButton okText="Guardado" onClick={guardarMetodo}>Guardar</AsyncButton></>}>

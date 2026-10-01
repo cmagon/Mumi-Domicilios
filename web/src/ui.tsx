@@ -93,10 +93,10 @@ export function Confirmar({ c, onClose }: { c: Confirmacion | null; onClose: () 
 }
 
 // ---------- Interruptor ----------
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
+export function Switch({ checked, onChange, label, color }: { checked: boolean; onChange: (v: boolean) => void; label?: string; color?: 'verde' }) {
   return (
     <label className="switch-fila">
-      <span className={`switch ${checked ? 'on' : ''}`} role="switch" aria-checked={checked} tabIndex={0}
+      <span className={`switch ${checked ? 'on' : ''} ${color ?? ''}`} role="switch" aria-checked={checked} tabIndex={0}
         onClick={() => onChange(!checked)} onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && (e.preventDefault(), onChange(!checked))}><span className="perilla" /></span>
       {label && <span>{label}</span>}
     </label>

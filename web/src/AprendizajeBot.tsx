@@ -6,7 +6,7 @@ type Regla = { id: string; regla: string; evidencia: string | null; origen_telef
 type Respaldo = { id: string; creado_en: string; automatico: boolean; nota: string | null; config: Record<string, string>; aprendizajes: unknown[] }
 
 // Aprendizaje continuo (reglas que la IA propone a partir de las conversaciones) y respaldos del bot (prompt + modelo + reglas)
-export default function AprendizajeBot() {
+export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldos' }) {
   const toast = useToast()
   const [reglas, setReglas] = useState<Regla[]>([])
   const [resp, setResp] = useState<Respaldo[]>([])
@@ -83,7 +83,7 @@ export default function AprendizajeBot() {
 
   return (
     <>
-      <div className="card"><h2>🧠 Aprendizaje del bot</h2>
+      {parte !== 'respaldos' && <div className="card"><h2>🧠 Aprendizaje del bot</h2>
         <p className="muted">La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</p>
         <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton></div>
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Por aprobar ({pendientes.length})</h3>
@@ -93,9 +93,9 @@ export default function AprendizajeBot() {
         {activas.map((x) => <Fila key={x.id} x={x} />)}
         <label>Agregar una regla tú mismo</label>
         <div className="row"><input placeholder="ej. Si el cliente escribe Nequii, entiende Nequi" value={nueva} onChange={(e) => setNueva(e.target.value)} /><AsyncButton okText="Agregada" onClick={agregar}>Agregar</AsyncButton></div>
-      </div>
+      </div>}
 
-      <div className="card"><h2>💾 Respaldos del bot</h2>
+      {parte !== 'reglas' && <div className="card"><h2>💾 Respaldos del bot</h2>
         <p className="muted">Guardan el prompt, el modelo, el proveedor, la configuración y las reglas aprendidas. Se crean solos antes de cada cambio de prompt o modelo (últimos 60) y puedes crear los tuyos; los manuales no se borran.</p>
         <div className="row"><AsyncButton okText="Respaldo creado" onClick={respaldar}>Crear respaldo ahora</AsyncButton></div>
         {resp.map((b) => (
@@ -105,7 +105,7 @@ export default function AprendizajeBot() {
             <button className="sec sm" onClick={() => descargar(b)}>⬇</button>
             <button className="sec sm" onClick={() => restaurar(b)}>Restaurar</button>
           </div>))}
-      </div>
+      </div>}
       <Confirmar c={conf} onClose={() => setConf(null)} />
     </>
   )

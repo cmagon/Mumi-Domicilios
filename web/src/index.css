@@ -315,3 +315,26 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .modal-cuerpo { min-height: 0; overflow-x: hidden; }
 .modal-cuerpo .row > * { min-width: 0; }
 .modal-cuerpo input, .modal-cuerpo select, .modal-cuerpo textarea { max-width: 100%; box-sizing: border-box; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; background: #fff; color: var(--tx); border: 1px solid var(--bd); border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0, 0, 0, .06); transition: transform .12s, box-shadow .12s; }
+.tile:hover:not(:disabled) { background: #fff; color: var(--tx); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, .12); }
+.tile-ico { font-size: 26px; } .tile .muted { font-size: 12px; }
+
+.logo-cab { height: 38px; max-width: 160px; object-fit: contain; border-radius: 8px; }
+.logo-cab-vacio { font-size: 26px; }
+header.top .salir { padding: 4px 10px; font-size: 16px; }
+header.top h1 { display: none; }
+
+.switch.on.verde { background: #25a85a; } .switch.verde:not(.on) { background: #d7b3b0; }
+.aviso-wa { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 6px 10px; border-radius: 10px; background: #f3faf5; border: 1px solid #cfe9d8; font-size: 13px; } .aviso-wa.off { background: #faf5f5; border-color: #ecd6d4; }
+
+.hora-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; } .hora-grid .chip { padding: 12px 6px; font-size: 16px; text-align: center; } .hora-grid .chip small { font-size: 11px; opacity: .8; }
+
+.galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-bottom: 6px; }
+.medio { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 2px solid transparent; background: #eee; }
+.medio img, .medio video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.medio.principal { border-color: var(--s); }
+.medio-tipo { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,.55); color: #fff; border-radius: 6px; padding: 0 5px; font-size: 12px; }
+.medio-acc { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 4px; justify-content: space-between; align-items: center; padding: 3px; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
+.medio.nuevo { display: flex; align-items: center; justify-content: center; border: 2px dashed var(--bd); background: #fafafa; color: var(--mut); font-size: 13px; }
