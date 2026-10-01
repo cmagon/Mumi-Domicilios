@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-export type EventoCliente = 'cancelado' | 'mantener' | 'pago' | 'confirmado' | 'listo' | 'en_ruta' | 'entregado'
+export type EventoCliente = 'cancelado' | 'mantener' | 'pago' | 'confirmado' | 'listo' | 'en_ruta' | 'entregado' | 'tomado'
 // Pasos del flujo que se avisan al cliente (paso → evento)
 export const EVENTO_PASO: Record<number, EventoCliente> = { 1: 'confirmado', 4: 'listo', 5: 'en_ruta', 6: 'entregado' }
 

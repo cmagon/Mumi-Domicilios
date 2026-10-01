@@ -14,6 +14,7 @@ function mensaje(evento: string, p: any): string | null {
   const cuando = [fecha(p.fecha_entrega), p.hora_entrega_solicitada ? `a las ${hora(p.hora_entrega_solicitada)}` : p.franja_horaria ? `en la franja ${p.franja_horaria}` : ''].filter(Boolean).join(' ')
   switch (evento) {
     case 'cancelado': return `Tu pedido ${n} quedó cancelado ✅${p.pagado ? ' El equipo te escribe para lo del reembolso.' : ''} Si fue un error o quieres hacer otro, escríbeme y con gusto te ayudo 😊`
+    case 'tomado': return `¡Listo! Ya tomamos tu pedido ${n} ✅${cuando ? ` Te lo entregamos ${cuando}.` : ''}${p.pagado ? '' : p.metodo_pago && !/efectivo/i.test(p.metodo_pago) ? ` Cuando hagas el pago por ${p.metodo_pago}, envíanos el comprobante por aquí.` : ''} Cualquier cambio me avisas 😊`
     case 'mantener': return `Listo 😊 tu pedido ${n} sigue en pie${cuando ? ` para ${cuando}` : ''}. ¡Gracias por avisarnos!`
     case 'pago': return `¡Recibimos tu pago del pedido ${n}! 🎉 Ya queda confirmado${cuando ? ` para ${cuando}` : ''}.`
     case 'confirmado': return `Tu pedido ${n} quedó confirmado ✅${cuando ? ` Te lo entregamos ${cuando}.` : ''}`
@@ -35,7 +36,7 @@ Deno.serve(async (req) => {
   if (perfil?.rol !== 'admin') return json({ ok: false, error: 'Sin permiso' }, 403)
 
   const { pedido_id, evento } = await req.json().catch(() => ({}))
-  const { data: p } = await sb.from('pedidos').select('numero,chat_telefono,modalidad,pagado,fecha_entrega,franja_horaria,hora_entrega_solicitada').eq('id', pedido_id).maybeSingle()
+  const { data: p } = await sb.from('pedidos').select('numero,chat_telefono,metodo_pago,modalidad,pagado,fecha_entrega,franja_horaria,hora_entrega_solicitada').eq('id', pedido_id).maybeSingle()
   if (!p) return json({ ok: false, error: 'Pedido no encontrado' }, 404)
   if (!p.chat_telefono) return json({ ok: true, enviado: false, motivo: 'pedido manual (sin chat de WhatsApp)' })
   const { data: c } = await sb.from('config').select('valor').eq('clave', 'avisar_cliente_cambios').maybeSingle()
