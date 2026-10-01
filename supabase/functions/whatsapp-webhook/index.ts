@@ -7,6 +7,7 @@ import { humanoTardo } from './humano.ts'
 import { sinNumeroPedido, franjasHabladas } from './texto.ts'
 import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { mediaAdmin } from './adminmedia.ts'
+import { asistenteAdmin } from './adminpedido.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
@@ -151,7 +152,8 @@ async function manejar(msg: any, nombreWA?: string) {
   // El nombre del perfil va aparte: si la columna aún no existe, no afecta lo demás
   if (nombreWA) await sb.from('conversaciones').update({ nombre_wa: nombreWA }).eq('telefono', from)
 
-  if (admins.includes(from) && ((await comandoAdmin(from, texto, cfg)) || (await comandoAviso(sb, cfg, from, texto)))) return
+  // El número de un administrador NUNCA se trata como cliente: comandos, pedidos dictados o la ayuda
+  if (admins.includes(from)) { if (!(await comandoAdmin(from, texto, cfg)) && !(await comandoAviso(sb, cfg, from, texto))) await asistenteAdmin(sb, cfg, from, texto); return }
   if (from === domi && (await comandoDomiciliario(from, texto))) return
 
   const { data: conv } = await sb.from('conversaciones').select('humano,humano_desde,ultimo_comprobante').eq('telefono', from).maybeSingle()

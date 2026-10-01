@@ -8,7 +8,7 @@ export async function mediaAdmin(sb: SupabaseClient, msg: any, from: string): Pr
   const m = msg.type === 'image' ? msg.image : msg.type === 'video' ? msg.video : msg.type === 'document' ? msg.document : null
   if (!m?.id) return false
   const cap = String(m.caption ?? '').trim().match(/^(foto|imagen|video|nuevo(?:\s+producto|\s+sabor)?)\s*:\s*([\s\S]+)$/i)
-  if (!cap) return false // sin instrucción: se trata como cualquier imagen (p. ej. un comprobante)
+  if (!cap) { await sendText(from, 'Recibí tu archivo, pero no sé qué hacer con él 🙂 Envíalo con el pie "foto: Cacao" (agrega al sabor) o "nuevo: Nombre, precio, descripción" (crea un sabor).'); return true }
   const modo = /^nuevo/i.test(cap[1]) ? 'nuevo' : 'foto'
   const dato = cap[2].trim()
   try {
