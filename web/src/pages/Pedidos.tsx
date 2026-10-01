@@ -5,6 +5,7 @@ import type { Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
 import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion } from '../ui'
 import ChatModal from '../ChatModal'
+import { SelectorFecha } from '../Calendario'
 import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, fechaCorta, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
 
 type Filtro = 'activos' | 'entregados' | 'cancelados' | 'archivados'
@@ -267,7 +268,7 @@ function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar,
       <p>{(o.pedido_items ?? []).map((i) => `${i.cantidad} × ${i.productos?.nombre}`).join(' · ')} — <b>{cop(o.total)}</b> ({o.metodo_pago}, {o.pagado ? 'pagado' : 'sin pagar'})</p>
       {!editable && <p className="muted">El ticket ya se imprimió: puedes ajustar hora, nota y dirección, pero reimprime el ticket para que salga actualizado.</p>}
       <div className="row">
-        <div><label>Fecha de entrega</label><input type="date" value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} /></div>
+        <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => setF({ ...f, fecha: v })} /></div>
         <div><label>Hora pedida por el cliente</label><input type="time" value={f.hora} onChange={(e) => setF({ ...f, hora: e.target.value })} /></div>
       </div>
       <label>Franja horaria</label><input placeholder="ej. 14:00-16:00" value={f.franja} onChange={(e) => setF({ ...f, franja: e.target.value })} />
