@@ -5,6 +5,7 @@ import type { Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
 import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion } from '../ui'
 import ChatModal from '../ChatModal'
+import { avisarCliente, EVENTO_PASO, type EventoCliente } from '../avisarCliente'
 import { SelectorFecha } from '../Calendario'
 import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, fechaCorta, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
 
@@ -105,6 +106,7 @@ export default function Pedidos() {
     setPedidos((l) => l.map((o) => (o.id === id ? { ...o, ...cambios } as Pedido : o)))
     return true
   }
+  const avisarCli = async (o: Pedido, ev: EventoCliente) => { const t = await avisarCliente(o.id, ev); if (t) toast(t, t.startsWith('Cliente') ? 'ok' : 'info') }
   const mover = async (o: Pedido, delta: 1 | -1) => {
     let nuevo = pasoDe(o.estado) + delta
     // Sin pago confirmado no se vuelve a "Confirmado" (la impresora lo reimprimiría): se regresa a Recibido
@@ -114,7 +116,7 @@ export default function Pedidos() {
     if (nuevo === 1 && !esEfectivo(o)) cambios.pagado = true
     if (nuevo === 6) cambios.pagado = true
     const ok = await actualizar(o.id, cambios)
-    if (ok) toast(`Pedido #${o.numero} → ${PASOS[nuevo].label}`)
+    if (ok) { toast(`Pedido #${o.numero} → ${PASOS[nuevo].label}`); if (delta === 1 && EVENTO_PASO[nuevo]) avisarCli(o, nuevo === 1 && !esEfectivo(o) ? 'pago' : EVENTO_PASO[nuevo]) }
     return ok
   }
   const avanzar = (o: Pedido) => {
@@ -140,14 +142,14 @@ export default function Pedidos() {
   })
   const confirmarPago = (o: Pedido) => setConf({
     titulo: 'Confirmar pago', okText: 'Sí, pago recibido', texto: <>¿Ya verificaste el pago de <b>{cop(o.total)}</b> de {o.cliente_nombre}?{comp[o.id] && <> Revisa el soporte adjunto.</>}</>,
-    onOk: async () => { if (await actualizar(o.id, { pagado: true })) toast(`Pago de #${o.numero} confirmado`) },
+    onOk: async () => { if (await actualizar(o.id, { pagado: true })) { toast(`Pago de #${o.numero} confirmado`); avisarCli(o, 'pago') } },
   })
   const reimprimir = async (o: Pedido) => { if (await actualizar(o.id, { reimprimir: true })) toast(`Reimpresión de #${o.numero} enviada a la impresora`) }
   const archivar = async (o: Pedido, v: boolean) => { if (await actualizar(o.id, { archivado: v })) toast(v ? `Pedido #${o.numero} archivado` : `Pedido #${o.numero} restaurado`) }
   const cancelar = (o: Pedido) => setConf({
     titulo: `Cancelar pedido #${o.numero}`, peligro: true, okText: 'Cancelar pedido',
-    texto: <>El stock reservado se devuelve solo. El pedido pasa a <b>Cancelados</b> y puedes archivarlo o eliminarlo después.</>,
-    onOk: () => actualizar(o.id, { estado: 'cancelado', cancelacion_solicitada: false }),
+    texto: <>El stock reservado se devuelve solo. El pedido pasa a <b>Cancelados</b>, <b>se le avisa al cliente por WhatsApp</b> y puedes archivarlo o eliminarlo después.</>,
+    onOk: async () => { const ok = await actualizar(o.id, { estado: 'cancelado', cancelacion_solicitada: false }); if (ok) avisarCli(o, 'cancelado'); return ok },
   })
   const eliminar = (o: Pedido) => setConf({
     titulo: `Eliminar pedido #${o.numero}`, peligro: true, okText: 'Eliminar definitivamente',
@@ -234,7 +236,7 @@ export default function Pedidos() {
                         ? <span className="badge rojo">Cancelado</span>
                         : <>
                           {paso > 0 && !listo && <AsyncButton className="sec" okText="" onClick={() => mover(o, -1)}>← Atrás</AsyncButton>}
-                          {cancelPedida(o) && <button className="sec" onClick={() => actualizar(o.id, { cancelacion_solicitada: false })}>Mantener pedido</button>}
+                          {cancelPedida(o) && <button className="sec" onClick={async () => { if (await actualizar(o.id, { cancelacion_solicitada: false })) avisarCli(o, 'mantener') }}>Mantener pedido</button>}
                           {pagoPend(o) && paso === 0 && <button className="sec" onClick={() => imprimirPendiente(o)}>🖨 Imprimir (pago pendiente)</button>}
                           {pagoPend(o) && paso >= 2 && <button className="sec" onClick={() => confirmarPago(o)}>💰 Confirmar pago</button>}
                           {!listo

@@ -7,7 +7,7 @@ import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } fr
 type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string; activo: boolean }
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'minutos_humano_sin_responder', 'proveedor_ia', 'motor_audio',
-  'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'seguimiento_1_min',
+  'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'avisar_cliente_cambios', 'seguimiento_1_min',
   'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'permitir_reserva_sin_stock', 'logo_url']
 
 export default function Configuracion() {
@@ -137,6 +137,7 @@ export default function Configuracion() {
         <input type="number" min={5} value={f.velocidad_escritura_ms ?? '35'} onChange={(e) => set('velocidad_escritura_ms', e.target.value)} />
         <label>Segundos de espera antes de responder, por si el cliente sigue escribiendo (0 = responder ya)</label>
         <input type="number" min={0} value={f.espera_agrupar_seg ?? '4'} onChange={(e) => set('espera_agrupar_seg', e.target.value)} />
+        <Switch checked={(f.avisar_cliente_cambios ?? 'si') !== 'no'} onChange={(v) => set('avisar_cliente_cambios', v ? 'si' : 'no')} label="Avisar al cliente por WhatsApp cuando cambio el estado de su pedido (confirmado, listo, en camino, entregado, cancelado)" />
         <Switch checked={(f.seguimiento_activo ?? 'si') !== 'no'} onChange={(v) => set('seguimiento_activo', v ? 'si' : 'no')} label="Recordatorios automáticos si el cliente no responde" />
         <div className="row">
           <div><label>1.er recordatorio (minutos)</label><input type="number" min={5} value={f.seguimiento_1_min ?? '10'} onChange={(e) => set('seguimiento_1_min', e.target.value)} /></div>

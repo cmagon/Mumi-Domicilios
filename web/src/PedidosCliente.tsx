@@ -4,6 +4,7 @@ import { cop } from './hooks'
 import type { Pedido } from './types'
 import { PASOS, esEfectivo, estadoDePaso, fechaCorta, horaBonita, pasoDe } from './pedidoFlow'
 import { AsyncButton, Confirmar, useToast } from './ui'
+import { avisarCliente, EVENTO_PASO } from './avisarCliente'
 import type { ComponentProps } from 'react'
 
 type Conf = ComponentProps<typeof Confirmar>['c']
@@ -37,6 +38,7 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
     const { error } = await supabase.from('pedidos').update(cambios).eq('id', o.id)
     if (error) { toast(error.message, 'err'); return false }
     toast(`Pedido #${o.numero} → ${PASOS[nuevo].label}`); cargar()
+    if (delta === 1 && EVENTO_PASO[nuevo]) avisarCliente(o.id, nuevo === 1 && !esEfectivo(o) ? 'pago' : EVENTO_PASO[nuevo]).then((t) => t && toast(t, t.startsWith('Cliente') ? 'ok' : 'info'))
   }
   const avanzar = (o: Pedido) => {
     const p = pasoDe(o.estado)
