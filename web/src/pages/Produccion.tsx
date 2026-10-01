@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { CalendarioGestion, SelectorFecha, useCalendario } from '../Calendario'
 import { supabase } from '../supabase'
 import { cop, hoy } from '../hooks'
 import type { Pedido } from '../types'
@@ -14,7 +15,12 @@ type Lote = { id: string; producto_id: string; cantidad: number; nota: string | 
 
 export default function Produccion() {
   const toast = useToast()
+  const cal = useCalendario()
+  const [calAbierto, setCalAbierto] = useState(false)
   const [fecha, setFecha] = useState(hoy())
+  const [ajustado, setAjustado] = useState(false)
+  // Al abrir, salta al día de producción más cercano (hoy si lo es)
+  useEffect(() => { if (!ajustado && !cal.cargando) { setFecha(cal.ajustar(hoy())); setAjustado(true) } }, [ajustado, cal.cargando, cal.ajustar]) // eslint-disable-line
   const [filas, setFilas] = useState<Fila[]>([])
   const [lotes, setLotes] = useState<Lote[]>([])
   const [pedidos, setPedidos] = useState<Pedido[]>([])
@@ -123,7 +129,8 @@ export default function Produccion() {
           <button onClick={abrirHorneado}>{registrado ? 'Editar horneado' : 'Registrar horneado'}</button>
         </div>
         <div className="row" style={{ alignItems: 'end' }}>
-          <div><label>Día de producción (entrega)</label><input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></div>
+          <div><label>Día de producción (entrega)</label><SelectorFecha valor={fecha} onChange={setFecha} /></div>
+          <div style={{ paddingBottom: 2 }}><button className="sec" onClick={() => setCalAbierto(true)}>📅 Calendario</button></div>
           <div className="muted" style={{ paddingBottom: 10 }}>{etiquetaFecha(fecha)}</div>
         </div>
         {!registrado && <p className="muted">Aún no registras cuántas se hornean este día. Mientras tanto el bot no ofrece galletas para entrega el mismo día; solo agenda.</p>}
@@ -171,6 +178,7 @@ export default function Produccion() {
             </div>)
         })}
       </Modal>
+      <CalendarioGestion abierto={calAbierto} onClose={() => setCalAbierto(false)} />
     </>
   )
 }

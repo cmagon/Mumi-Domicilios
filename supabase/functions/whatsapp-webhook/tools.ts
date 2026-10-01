@@ -9,14 +9,22 @@ const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 's
 const sinAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 export const diaSemana = (fecha: string) => DIAS[new Date(fecha + 'T12:00:00Z').getUTCDay()]
 
-export function esDiaProduccion(fecha: string, dias: string) {
+// Calendario especial: días extra de producción ('produccion') o días cerrados por feria/evento/descanso ('cerrado')
+export type Excepciones = Map<string, { tipo: string; nota: string | null }>
+export async function cargarExcepciones(sb: SupabaseClient): Promise<Excepciones> {
+  const { data } = await sb.from('calendario_produccion').select('fecha,tipo,nota').gte('fecha', fechaBogota())
+  return new Map((data ?? []).map((r: any) => [String(r.fecha), { tipo: r.tipo as string, nota: (r.nota as string | null) ?? null }]))
+}
+export function esDiaProduccion(fecha: string, dias: string, ex?: Excepciones) {
+  const e = ex?.get(fecha)
+  if (e) return e.tipo === 'produccion'
   return dias.split(',').map((d) => sinAcento(d.trim())).includes(diaSemana(fecha))
 }
-export function proximaProduccion(desde: string, dias: string, incluirHoy: boolean) {
+export function proximaProduccion(desde: string, dias: string, incluirHoy: boolean, ex?: Excepciones) {
   const d = new Date(desde + 'T12:00:00Z')
-  for (let i = incluirHoy ? 0 : 1; i < 15; i++) {
+  for (let i = incluirHoy ? 0 : 1; i < 90; i++) {
     const c = new Date(d.getTime() + i * 86400000).toISOString().slice(0, 10)
-    if (esDiaProduccion(c, dias)) return c
+    if (esDiaProduccion(c, dias, ex)) return c
   }
   return null
 }
@@ -32,10 +40,10 @@ export function cierreEntregas(franjas: string): { min: number; texto: string } 
   return { min, texto: `${h % 12 || 12}${m ? ':' + String(m).padStart(2, '0') : ''} ${h >= 12 ? 'p. m.' : 'a. m.'}` }
 }
 // Primera fecha de entrega posible: hoy si es día de producción y aún se toman pedidos (hasta `margen` min antes del cierre); si no, la próxima producción.
-export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string, margen = 60) {
+export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string, margen = 60, ex?: Excepciones) {
   const cierre = cierreEntregas(franjas)
-  const hoyOk = esDiaProduccion(hoy, dias) && (!cierre || minutosAhora() < cierre.min - margen)
-  return { fecha: hoyOk ? hoy : proximaProduccion(hoy, dias, false), cierre }
+  const hoyOk = esDiaProduccion(hoy, dias, ex) && (!cierre || minutosAhora() < cierre.min - margen)
+  return { fecha: hoyOk ? hoy : proximaProduccion(hoy, dias, false, ex), cierre }
 }
 const manana = (hoy: string) => new Date(new Date(hoy + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
 
@@ -117,6 +125,7 @@ export const TOOLS: Tool[] = [
 export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): Promise<unknown> {
   const { sb, cfg } = ctx
   const dias = cfg.dias_produccion ?? ''
+  const ex = await cargarExcepciones(sb)
   switch (name) {
     case 'consultar_catalogo': {
       const { data } = await sb.from('productos').select('nombre,descripcion,detalles,precio,foto_url').eq('activo', true).order('nombre')
@@ -133,14 +142,14 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
 
       const filasHoy = await resumen(hoy)
       const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
-      const diaProd = esDiaProduccion(hoy, dias)
+      const diaProd = esDiaProduccion(hoy, dias, ex)
       const enHorario = !cierre || minutosAhora() < cierre.min - margen
       const puedeHoy = diaProd && horneadoHoy && enHorario
       const motivoNoHoy = puedeHoy ? null
         : !diaProd ? 'hoy no es día de producción'
         : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes del cierre de entregas)`
         : 'aún no se ha registrado el horneado de hoy'
-      const proxima = proximaProduccion(hoy, dias, false)
+      const proxima = proximaProduccion(hoy, dias, false, ex)
       const pedida: string | undefined = a.fecha
       let modoHoy = pedida ? pedida === hoy : puedeHoy
       const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
@@ -295,7 +304,11 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const hoy = fechaBogota()
   const fecha: string = a.fecha_entrega
   if (fecha < hoy) return { ok: false, error: 'Fecha en el pasado' }
-  if (!esDiaProduccion(fecha, cfg.dias_produccion ?? '')) return { ok: false, error: 'Esa fecha no es día de producción' }
+  const ex = await cargarExcepciones(sb)
+  if (!esDiaProduccion(fecha, cfg.dias_produccion ?? '', ex)) {
+    const cerrado = ex.get(fecha)
+    return { ok: false, error: cerrado?.tipo === 'cerrado' ? `Ese día no hay producción ni entregas${cerrado.nota ? ` (${cerrado.nota})` : ''}. Ofrece la siguiente fecha de producción (consultar_stock).` : 'Esa fecha no es día de producción' }
+  }
   const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
   const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
   if (fecha === hoy && cierre && minutosAhora() >= cierre.min - margen)

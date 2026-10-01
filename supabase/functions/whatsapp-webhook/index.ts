@@ -4,7 +4,7 @@ import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
-import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, type Ctx } from './tools.ts'
+import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, cargarExcepciones, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
 declare const EdgeRuntime: any
@@ -165,8 +165,11 @@ async function manejar(msg: any, nombreWA?: string) {
       `${(pa.pedido_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(', ')}. ` +
       `Este pedido YA está creado y su cupo reservado: NO vuelvas a consultar disponibilidad para él ni cambies su fecha. Para cambios usa modificar_pedido (solo si el ticket no se ha impreso).`
     : ''
+  const excep = await cargarExcepciones(sb)
+  const calEspecial = excep.size ? ' Calendario especial (próximas fechas): ' + [...excep.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 12)
+    .map(([f, e]) => `${f} ${e.tipo === 'cerrado' ? 'SIN producción ni entregas' + (e.nota ? ` (${e.nota})` : '') : 'producción extra' + (e.nota ? ` (${e.nota})` : '')}`).join('; ') + '.' : ''
   const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
-    `Días de producción: ${cfg.dias_produccion}. Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
+    `Días de producción: ${cfg.dias_produccion}.${calEspecial} Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido
   const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }

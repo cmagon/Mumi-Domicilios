@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { hoy, useConfig } from '../hooks'
 import type { Producto } from '../types'
 import { AsyncButton, useToast } from '../ui'
+import { SelectorFecha, useCalendario } from '../Calendario'
 
 export default function PedidoManual() {
   const toast = useToast()
@@ -11,6 +12,8 @@ export default function PedidoManual() {
   const [metodos, setMetodos] = useState<{ nombre: string }[]>([])
   const [f, setF] = useState({ nombre: '', tel: '', pago: '', nota: '', fecha: hoy(), hora: '', franja: '', modalidad: 'domicilio', direccion: '', tarifa: '0' })
   const [items, setItems] = useState<{ producto_id: string; cantidad: number }[]>([{ producto_id: '', cantidad: 1 }])
+  const cal = useCalendario()
+  useEffect(() => { if (!cal.cargando) setF((x) => ({ ...x, fecha: cal.ajustar(x.fecha) })) }, [cal.cargando, cal.ajustar]) // eslint-disable-line
   const [err, setErr] = useState<Record<string, boolean>>({})
   useEffect(() => {
     supabase.from('productos').select('*').eq('activo', true).order('nombre').then(({ data }) => setProds(data ?? []))
@@ -54,7 +57,7 @@ export default function PedidoManual() {
         {items.length > 1 && <button className="sec sm" onClick={() => setItems(items.filter((_, j) => j !== k))} aria-label="Quitar">✕</button>}</div>))}
       <button type="button" className="sec sm" onClick={() => setItems([...items, { producto_id: '', cantidad: 1 }])}>+ otro sabor</button>
       <div className="row">
-        <div><label>Fecha de entrega</label><input type="date" value={f.fecha} onChange={(e) => set('fecha', e.target.value)} /></div>
+        <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => set('fecha', v)} /></div>
         <div><label>Hora pedida (opcional)</label><input type="time" value={f.hora} onChange={(e) => set('hora', e.target.value)} /></div>
       </div>
       <label>Franja horaria</label><input placeholder="ej. 14:00-16:00" value={f.franja} onChange={(e) => set('franja', e.target.value)} />

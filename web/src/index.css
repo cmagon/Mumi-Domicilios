@@ -277,3 +277,22 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 
 .por-revisar { border-left: 5px solid #d32f2f; background: #fff6f5; }
 .rev-fila { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f3d6d3; font-size: 14px; }
+
+/* ===== Calendario de producción ===== */
+.cal-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-sem { text-align: center; font-size: 11px; color: var(--mut); }
+.cal-dia { aspect-ratio: 1; padding: 0; border-radius: 10px; background: #f4f4f4; color: var(--tx); border: 2px solid transparent; font-size: 14px; }
+.cal-dia:hover:not(:disabled) { background: #e8e8e8; color: var(--tx); box-shadow: none; }
+.cal-dia.pasado, .cal-dia:disabled { opacity: .35; }
+.cal-dia.prod { background: #d8f0dc; color: #1e5e2a; font-weight: 700; }
+.cal-dia.extra { background: #cfe8ff; color: #1b4f96; font-weight: 700; }
+.cal-dia.cerrado { background: #fde0dd; color: #b00020; text-decoration: line-through; opacity: 1; }
+.cal-dia.hoy { outline: 2px dashed var(--s); outline-offset: -3px; }
+.cal-dia.sel { border-color: var(--p); }
+.cal-leyenda { display: flex; gap: 12px; font-size: 12px; margin: 8px 0; flex-wrap: wrap; }
+.cal-leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 4px; vertical-align: -1px; }
+.cal-leyenda i.prod { background: #d8f0dc; } .cal-leyenda i.extra { background: #cfe8ff; } .cal-leyenda i.cerrado { background: #fde0dd; }
+.cal-sheet { border-top: 1px solid var(--bd); padding-top: 8px; }
+.aviso-pedidos { background: #fff0c2; color: #6b4a00; border-radius: 8px; padding: 6px 8px; font-size: 13px; margin-top: 6px; }
+.selector-fecha { text-transform: capitalize; width: 100%; text-align: left; }
