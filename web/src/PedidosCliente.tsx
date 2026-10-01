@@ -61,7 +61,7 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
               <span className="muted pc-fecha">{fechaCorta(o.fecha_entrega)}{o.hora_entrega_solicitada ? ` · ${horaBonita(o.hora_entrega_solicitada)}` : o.franja_horaria ? ` · ${o.franja_horaria}` : ''}</span></div>
             <div className="pc-pasos">{PASOS.map((p, i) => <span key={p.id} className={i <= paso && !cancelado ? 'hecho' : ''} />)}</div>
             <div>{(o.pedido_items ?? []).map((i) => `${i.cantidad} × ${i.productos?.nombre}`).join(' · ')}</div>
-            <div className="muted">{cop(o.total)} · {o.metodo_pago ?? 'sin método'} · {o.pagado ? '✅ pagado' : esEfectivo(o) ? 'cobrar al entregar' : '⏳ sin pagar'} · {o.modalidad === 'domicilio' ? `🛵 ${o.direccion ?? ''}` : 'Recoge en tienda'}</div>
+            <div className="muted">{cop(o.total)} · {o.metodo_pago ?? 'sin método'} · {o.pagado ? '✅ pagado' : esEfectivo(o) ? 'cobrar al entregar' : '⏳ sin pagar'} · {o.modalidad === 'domicilio' ? <>🛵 {o.direccion ?? ''}{o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank">Ver mapa</a></>}</> : 'Recoge en tienda'}</div>
             {o.nota && <div className="muted">📝 {o.nota}</div>}
             {!cancelado && paso < PASOS.length - 1 && <div className="pc-acc">
               {paso > 0 && <button className="ghost" onClick={() => mover(o, -1)}>← Atrás</button>}

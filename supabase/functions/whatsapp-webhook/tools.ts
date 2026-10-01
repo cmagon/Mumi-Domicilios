@@ -101,7 +101,8 @@ export const TOOLS: Tool[] = [
       nombre: { type: 'string' }, telefono_contacto: { type: 'string' }, metodo_pago: { type: 'string' },
       fecha_entrega: { type: 'string', description: 'YYYY-MM-DD' }, franja_horaria: { type: 'string' }, nota: { type: 'string' },
       ubicacion_compartida: { type: 'boolean', description: 'true si la dirección viene de la ubicación (pin) que compartió el cliente' },
-      hora_entrega: { type: 'string', description: 'HH:MM en 24 h, solo si el cliente pidió una hora específica de entrega (ej. "a las 3 pm" → 15:00)' } },
+      hora_entrega: { type: 'string', description: 'HH:MM en 24 h, solo si el cliente pidió una hora específica de entrega (ej. "a las 3 pm" → 15:00)' },
+      pago_pendiente: { type: 'boolean', description: 'true cuando el cliente pagará por transferencia (Nequi, Bre-B…) pero todavía no tiene comprobante (pagará al recibir o después). El pedido se crea reservado, queda como pago pendiente y se avisa al equipo. NO cambies el método a efectivo.' } },
       required: ['items', 'modalidad', 'nombre', 'telefono_contacto', 'metodo_pago', 'fecha_entrega'] } },
   { name: 'notificar_humano', description: 'Escala la conversación a una persona y detiene el bot en este chat. ANTES de llamarla debes tener el nombre completo y el teléfono de contacto del cliente, y saber qué necesita; si falta algo, pídeselo primero.',
     parameters: { type: 'object', properties: {
@@ -351,8 +352,9 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const total = items.reduce((s, i) => s + i.precio * i.cantidad, 0) + tarifa
   const efectivo = sinAcento(a.metodo_pago).includes('efectivo')
   const pagoOk = !efectivo && ctx.comprobanteOk === true
-  if (!efectivo && !pagoOk) {
-    return { ok: false, error: 'Pago no verificado: usa validar_comprobante primero' }
+  const pendiente = !efectivo && !pagoOk && a.pago_pendiente === true
+  if (!efectivo && !pagoOk && !pendiente) {
+    return { ok: false, error: 'Pago no verificado: usa validar_comprobante primero. Si el cliente dice que pagará después o al recibir, vuelve a llamar con pago_pendiente=true (sin cambiar el método de pago).' }
   }
   let ubic: { lat?: number | null; lng?: number | null } = {}
   if (a.ubicacion_compartida) {
@@ -362,14 +364,15 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const { data: ped, error } = await sb.from('pedidos').insert({
     chat_telefono: ctx.telefono, pendiente_produccion: faltas.length > 0, hora_entrega_solicitada: horaPedida, direccion_aprox: !!a.ubicacion_compartida, lat: ubic.lat ?? null, lng: ubic.lng ?? null,
     cliente_nombre: a.nombre, cliente_telefono: a.telefono_contacto, origen: 'bot', metodo_pago: a.metodo_pago,
-    estado: efectivo ? 'pendiente_cobro' : 'pago_verificado', pagado: pagoOk, modalidad: a.modalidad, direccion: a.direccion ?? null,
+    estado: efectivo ? 'pendiente_cobro' : pendiente ? 'recibido' : 'pago_verificado', pagado: pagoOk, modalidad: a.modalidad, direccion: a.direccion ?? null,
     tarifa_domicilio: tarifa, total, nota: a.nota ?? null, fecha_entrega: fecha, franja_horaria: a.franja_horaria ?? null,
     comprobante_url: pagoOk ? ctx.comprobantePath : null, referencia_pago: pagoOk ? ctx.referencia : null,
   }).select('id,numero').single()
   if (error || !ped) return { ok: false, error: error?.message }
   if (faltas.length) await avisar(sb, 'sin_stock', `Reserva sin stock — pedido #${ped.numero}`, `Faltan por producir para ${fecha}: ${faltas.join(', ')}`, ped.id, ctx.telefono)
+  if (pendiente) await avisar(sb, 'pago', `Pago pendiente — pedido #${ped.numero}`, `$${total} por ${a.metodo_pago}: el cliente pagará después o al recibir. Verifica el pago cuando llegue (Confirmar pago en Pedidos).`, ped.id, ctx.telefono)
   if (pagoOk) await avisar(sb, 'pago', `Pago recibido — pedido #${ped.numero}`, `$${total} (validado automáticamente)`, ped.id, ctx.telefono)
   await sb.from('pedido_items').insert(items.map((i) => ({ pedido_id: ped.id, producto_id: i.producto_id, cantidad: i.cantidad, precio_unitario: i.precio })))
-  return { ok: true, numero_pedido: ped.numero, total, cobrar_en_entrega: efectivo ? total : 0, fecha_entrega: fecha,
+  return { ok: true, numero_pedido: ped.numero, total, cobrar_en_entrega: efectivo ? total : 0, ...(pendiente ? { pago_pendiente_por: a.metodo_pago, aviso_pago: `Queda reservado con pago pendiente por ${a.metodo_pago}; el equipo ya fue avisado. Dile que pagará por ${a.metodo_pago} y que le confirmamos al recibir el pago.` } : {}), fecha_entrega: fecha,
     ...(faltas.length ? { pendiente_de_produccion: true, aviso: 'Parte del pedido se producirá para esa fecha: díselo con naturalidad (queda reservado y el equipo lo fabrica).' } : {}) }
 }
