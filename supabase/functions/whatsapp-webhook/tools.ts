@@ -384,7 +384,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
 }
 
 // ¿La dirección cae en un barrio sin domicilio (Configuración)?
-function barrioSinDomicilio(cfg: Record<string, string>, ...textos: (string | null | undefined)[]): string | null {
+export function barrioSinDomicilio(cfg: Record<string, string>, ...textos: (string | null | undefined)[]): string | null {
   const t = sinAcento(textos.filter(Boolean).join(' '))
   return (cfg.barrios_sin_domicilio ?? '').split(',').map((x) => x.trim()).filter(Boolean).find((b) => t.includes(sinAcento(b))) ?? null
 }
