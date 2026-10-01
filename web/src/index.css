@@ -342,3 +342,6 @@ header.top h1 { display: none; }
 header.top .salir { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .6); border-radius: 18px; padding: 6px 14px; font-size: 13px; box-shadow: none; }
 header.top .salir:hover:not(:disabled) { background: #fff; color: var(--p); border-color: #fff; box-shadow: none; }
 @media (max-width: 899px) { header.top .salir { display: none; } }
+
+.mapa-pin { height: 280px; border-radius: 12px; border: 1px solid var(--bd); margin-top: 8px; z-index: 0; } .pin-mapa { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); background: none; border: 0; }
+.leaflet-container { font-family: inherit; }
