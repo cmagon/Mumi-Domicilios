@@ -5,6 +5,7 @@ import { AsyncButton, useToast } from './ui'
 import PedidosCliente from './PedidosCliente'
 import { useConfig } from './hooks'
 import QRCode from 'qrcode'
+import TomarPedido from './TomarPedido'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
@@ -49,6 +50,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [texto, setTexto] = useState('')
   const [verPedidos, setVerPedidos] = useState(false)
+  const [tomando, setTomando] = useState(false)
   const [nActivos, setNActivos] = useState(0)
   const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
   const archivo = useRef<HTMLInputElement>(null)
@@ -143,7 +145,11 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
       </div>
       <div className="pestanas"><button className={!verPedidos ? 'on' : ''} onClick={() => setVerPedidos(false)}>💬 Chat</button>
         <button className={verPedidos ? 'on' : ''} onClick={() => setVerPedidos(true)}>📋 Pedidos{nActivos > 0 && <b>{nActivos}</b>}</button></div>
-      {resumen}
+      <div className="burbujas">
+        {resumen}
+        <button className="burbuja-ia pedido" onClick={() => setTomando(true)} aria-label="Tomar pedido" title="Tomar pedido">🛒</button>
+      </div>
+      <TomarPedido telefono={telefono} nombre={nombre ?? conv?.nombre_wa} abierto={tomando} onClose={() => setTomando(false)} />
       {avisos.length > 0 && (
         <div className="avisos-chat">
           {avisos.map((a) => (

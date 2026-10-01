@@ -79,3 +79,20 @@ export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string,
   }
   return { revisadas, reglas }
 }
+
+const SISTEMA_EXTRAER = `Eres asistente del equipo de Mumi (galletas por WhatsApp). Lee la conversación y extrae el pedido que el cliente está armando o dejó a medias, usando SOLO lo que realmente dijo (si no lo dijo, null). Responde SOLO un JSON:
+{"nombre":string|null,"telefono_contacto":string|null,"items":[{"sabor":"nombre EXACTO de la lista de sabores","cantidad":número}],"modalidad":"domicilio"|"recoger"|null,"direccion":string|null,"zona_tarifa":"nombre EXACTO de la lista de tarifas"|null,"metodo_pago":"nombre EXACTO de la lista de métodos"|"Efectivo"|null,"fecha_entrega":"YYYY-MM-DD"|null,"hora_entrega":"HH:MM"|null,"franja":string|null,"nota":"observaciones vigentes, resumidas (la última decisión del cliente)"|null,"resumen":"1 frase de en qué quedó la conversación"}`
+
+// Prellena el pedido manual a partir de la conversación (el admin lo revisa y completa)
+export async function extraerPedido(sb: SupabaseClient, cfg: Record<string, string>, telefono: string): Promise<Record<string, unknown>> {
+  const [{ data: prods }, { data: tars }, { data: mets }, { data: msgs }] = await Promise.all([
+    sb.from('productos').select('nombre').eq('activo', true), sb.from('tarifas_domicilio').select('nombre').eq('activo', true),
+    sb.from('metodos_pago').select('nombre').eq('activo', true),
+    sb.from('mensajes').select('rol,contenido,creado_en').eq('telefono', telefono).order('creado_en', { ascending: false }).limit(60)])
+  const texto = (msgs ?? []).reverse().map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
+  const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
+  const prov = await construirProveedor(sb, cfg)
+  const out = await chat(prov, SISTEMA_EXTRAER, [{ role: 'user', content: `Hoy es ${hoy}.\nSabores: ${(prods ?? []).map((x) => x.nombre).join(', ')}\nTarifas de domicilio: ${(tars ?? []).map((x) => x.nombre).join(', ')}\nMétodos de pago: ${(mets ?? []).map((x) => x.nombre).join(', ')}\n\nConversación:\n${texto}` }], [], async () => ({}))
+  const j = out.match(/\{[\s\S]*\}/)
+  return j ? JSON.parse(j[0]) : {}
+}
