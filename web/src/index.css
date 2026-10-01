@@ -338,3 +338,7 @@ header.top h1 { display: none; }
 .medio-tipo { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,.55); color: #fff; border-radius: 6px; padding: 0 5px; font-size: 12px; }
 .medio-acc { position: absolute; left: 0; right: 0; bottom: 0; display: flex; gap: 4px; justify-content: space-between; align-items: center; padding: 3px; background: linear-gradient(transparent, rgba(0,0,0,.55)); }
 .medio.nuevo { display: flex; align-items: center; justify-content: center; border: 2px dashed var(--bd); background: #fafafa; color: var(--mut); font-size: 13px; }
+
+header.top .salir { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .6); border-radius: 18px; padding: 6px 14px; font-size: 13px; box-shadow: none; }
+header.top .salir:hover:not(:disabled) { background: #fff; color: var(--p); border-color: #fff; box-shadow: none; }
+@media (max-width: 899px) { header.top .salir { display: none; } }

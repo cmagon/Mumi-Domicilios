@@ -222,6 +222,7 @@ export default function Configuracion() {
         {sec === 'equipo' && (<>
 <div>
         <label>Números admin autorizados (WhatsApp, separados por coma)</label><input value={f.admin_numeros ?? ''} onChange={(e) => set('admin_numeros', e.target.value)} />
+        <p className="muted">Desde estos números puedes escribirle al bot: <b>evento: …</b>, <b>instrucción: …</b>, <b>avisos</b>, <b>hoy: cacao 30</b>, <b>fabricadas: …</b>. Y enviarle una foto o video con el pie <b>foto: Cacao</b> (agrega al sabor) o <b>nuevo: Nombre, precio, descripción</b> (crea un sabor oculto).</p>
         <label>Si tardas más de estos minutos en responder a un cliente que atiendes tú, el bot retoma el chat (0 = nunca; por defecto 5)</label><input type="number" min={0} value={f.minutos_humano_sin_responder ?? '5'} onChange={(e) => set('minutos_humano_sin_responder', e.target.value)} />
         <label>Horas de atención humana antes de que el bot se reactive solo (por defecto 12)</label><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
         <label>Número del domiciliario (WhatsApp, con indicativo, ej. 573001234567)</label><input value={f.domiciliario_numero ?? ''} onChange={(e) => set('domiciliario_numero', e.target.value)} />
