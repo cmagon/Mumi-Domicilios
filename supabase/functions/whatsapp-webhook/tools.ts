@@ -122,6 +122,30 @@ export const TOOLS: Tool[] = [
       required: ['nombre', 'telefono_contacto', 'motivo', 'resumen'] } },
 ]
 
+export const etiquetaEntrega = (f: string, hoy: string, cierre: { texto: string } | null) =>
+  f === hoy ? `hoy${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
+
+// Estado de entrega de AHORA (una sola fuente de verdad para el bot): ¿se pueden tomar pedidos para hoy o se agenda a la próxima producción?
+export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, string>, ex?: Excepciones) {
+  const hoy = fechaBogota()
+  const dias = cfg.dias_produccion ?? ''
+  const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
+  const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
+  const filasHoy = ((await sb.rpc('stock_resumen', { p_fecha: hoy })).data ?? []) as any[]
+  const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
+  const diaProd = esDiaProduccion(hoy, dias, ex)
+  const enHorario = !cierre || minutosAhora() < cierre.min - margen
+  const puedeHoy = diaProd && horneadoHoy && enHorario
+  const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
+  const hoySeAcaboTodo = puedeHoy && extrasHoy === 0
+  const motivoNoHoy = puedeHoy ? null
+    : !diaProd ? 'hoy no es día de producción'
+    : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes del cierre de entregas)`
+    : 'aún no se ha registrado el horneado de hoy'
+  return { hoy, margen, cierre, filasHoy, diaProd, enHorario, puedeHoy, hoySeAcaboTodo, mismoDia: puedeHoy && !hoySeAcaboTodo, motivoNoHoy,
+    proxima: proximaProduccion(hoy, dias, false, ex) }
+}
+
 export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): Promise<unknown> {
   const { sb, cfg } = ctx
   const dias = cfg.dias_produccion ?? ''
@@ -134,29 +158,14 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       return (data ?? []).map(({ nombre, descripcion, detalles, precio }) => ({ nombre, descripcion, detalles: detalles || null, precio, nota: 'Solo puedes afirmar lo que dicen descripcion y detalles; si falta un dato, no lo inventes.' }))
     }
     case 'consultar_stock': {
-      const hoy = fechaBogota()
-      const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
-      const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
-      const etiqueta = (f: string) => f === hoy ? `hoy${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
+      const e = await estadoEntrega(sb, cfg, ex)
+      const { hoy, cierre, filasHoy, puedeHoy, hoySeAcaboTodo, motivoNoHoy, proxima } = e
+      const etiqueta = (f: string) => etiquetaEntrega(f, hoy, cierre)
       const resumen = async (f: string) => ((await sb.rpc('stock_resumen', { p_fecha: f })).data ?? []) as any[]
-
-      const filasHoy = await resumen(hoy)
-      const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
-      const diaProd = esDiaProduccion(hoy, dias, ex)
-      const enHorario = !cierre || minutosAhora() < cierre.min - margen
-      const puedeHoy = diaProd && horneadoHoy && enHorario
-      const motivoNoHoy = puedeHoy ? null
-        : !diaProd ? 'hoy no es día de producción'
-        : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes del cierre de entregas)`
-        : 'aún no se ha registrado el horneado de hoy'
-      const proxima = proximaProduccion(hoy, dias, false, ex)
       const pedida: string | undefined = a.fecha
-      let modoHoy = pedida ? pedida === hoy : puedeHoy
-      const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
-      // Si hoy ya no queda ningún extra, se pasa directo a agendar para la siguiente fecha de entrega
-      const hoySeAcaboTodo = !pedida && puedeHoy && extrasHoy === 0
-      if (hoySeAcaboTodo) modoHoy = false
-      const fecha = pedida ?? (modoHoy ? hoy : proxima)
+      // Hoy solo cuenta si realmente se pueden tomar pedidos para hoy; si no, se agenda para la próxima fecha de entrega
+      const modoHoy = pedida ? (pedida === hoy && puedeHoy) : e.mismoDia
+      const fecha = (pedida && pedida !== hoy ? pedida : null) ?? (modoHoy ? hoy : proxima)
       if (!fecha) return { error: 'No hay días de producción configurados' }
       const filas = fecha === hoy ? filasHoy : await resumen(fecha)
       // Fecha futura = día de producción: se hornea de nuevo, así que (si las reservas lo permiten) todos los sabores se ofrecen aunque el stock registrado sea 0
@@ -175,16 +184,20 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         agendables = { fecha: proxima, cuando_decirlo: etiqueta(proxima), sabores: con.map((r) => ({ sabor: r.nombre, cantidad_disponible: Number(r.disponible_general) })) }
         sinStock = faltantes.filter((n) => !con.some((r) => r.nombre === n))
       } else if (!modoHoy) sinStock = faltantes
+      const motivoHoy = hoySeAcaboTodo ? 'hoy ya se acabaron todas las galletas' : motivoNoHoy
       return {
         hoy: `${diaSemana(hoy)} ${hoy}`, modo: modoHoy ? 'mismo_dia' : 'agendar', fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha),
+        como_decirlo: modoHoy ? `Hoy tenemos disponibles estas galletas${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}`
+          : `Para ${etiqueta(fecha)} tenemos ${seProduce ? 'producción nueva' : 'estas galletas disponibles'}`,
+        ...(modoHoy ? {} : { hoy_no_se_toman_pedidos: motivoHoy, regla: 'NO digas que hay galletas "para hoy": hoy no se toman pedidos. Habla siempre de la fecha_entrega.' }),
         hoy_ya_se_acabo_todo: hoySeAcaboTodo,
-        motivo_no_es_hoy: modoHoy ? null : (hoySeAcaboTodo ? 'hoy ya se acabaron todas las galletas' : motivoNoHoy), franjas_entrega: cfg.franjas_entrega,
+        motivo_no_es_hoy: modoHoy ? null : motivoHoy, franjas_entrega: cfg.franjas_entrega,
         sabores_disponibles_para_esa_fecha: sabores.filter((x) => x.disponible),
         sabores_que_no_alcanzan_para_esa_fecha: faltantes,
         de_esos_se_pueden_agendar_para_la_siguiente_fecha: agendables, sin_stock_por_ahora: sinStock,
         proxima_produccion: (modoHoy ? proxima : fecha) ? { fecha: modoHoy ? proxima : fecha, cuando_decirlo: etiqueta((modoHoy ? proxima : fecha) as string) } : null,
         reserva_sin_stock_permitida: cfg.permitir_reserva_sin_stock !== 'no',
-        nota: 'Si modo=agendar, esa fecha es un día de producción: se hornea de nuevo, así que ofrece TODOS los sabores de sabores_disponibles_para_esa_fecha como disponibles para esa fecha (aunque cantidad_disponible sea 0) y NUNCA digas que no hay sabores ni que "no quedan". No ofrezcas "avisarle cuando haya": ofrece reservar. Si el cliente quiere un sabor que está en sin_stock_por_ahora NO pierdas la venta: dile que se producirán más para proxima_produccion y ofrécele dejárselo reservado (si reserva_sin_stock_permitida) o avisarle; llama registrar_agotado. Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado".',
+        nota: 'Si modo=agendar, esa fecha es un día de producción: se hornea de nuevo, así que ofrece TODOS los sabores de sabores_disponibles_para_esa_fecha como disponibles para esa fecha (aunque cantidad_disponible sea 0) y NUNCA digas que no hay sabores ni que "no quedan". No ofrezcas "avisarle cuando haya": ofrece reservar. Si el cliente quiere un sabor que está en sin_stock_por_ahora NO pierdas la venta: dile que se producirán más para proxima_produccion y ofrécele dejárselo reservado (si reserva_sin_stock_permitida) o avisarle; llama registrar_agotado. Usa cantidad_disponible si preguntan cuántas quedan. Un pedido nunca supera esas cantidades. Habla de forma natural ("ya se acabó por hoy"), nunca listes sabores con la palabra "agotado". Usa como_decirlo para abrir la lista y no cambies de versión entre mensajes.',
       }
     }
     case 'consultar_tarifa_domicilio': {

@@ -1,6 +1,6 @@
 // Analiza conversaciones con IA. Lo invoca el botón "Analizar con IA" del micrositio (sesión de admin).
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { analizarSesiones } from '../whatsapp-webhook/analisis.ts'
+import { analizarSesiones, aprenderDeSesiones } from '../whatsapp-webhook/analisis.ts'
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { ...cors, 'content-type': 'application/json' } })
@@ -19,6 +19,7 @@ Deno.serve(async (req) => {
   const cfg = Object.fromEntries((data ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
   const body = await req.json().catch(() => ({}))
   try {
+    if (body.modo === 'aprender') { const r = await aprenderDeSesiones(sb, cfg, Math.min(Number(body.limite) || 5, 10)); return json({ ok: true, ...r }) }
     const n = await analizarSesiones(sb, cfg, Math.min(Number(body.limite) || 10, 20), body.telefono && body.inicio ? { telefono: body.telefono, inicio: body.inicio } : undefined)
     return json({ ok: true, analizadas: n })
   } catch (e) { return json({ ok: false, error: String(e).slice(0, 300) }) }

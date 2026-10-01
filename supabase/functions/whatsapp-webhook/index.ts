@@ -4,7 +4,7 @@ import { direccionAprox } from './geo.ts'
 import { registrarAlerta } from './alerts.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendText, verifySignature } from './wa.ts'
-import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, cargarExcepciones, type Ctx } from './tools.ts'
+import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
 declare const EdgeRuntime: any
@@ -138,12 +138,16 @@ async function manejar(msg: any, nombreWA?: string) {
     await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', from)
   }
 
-  // Agrupa ráfagas: si el cliente sigue escribiendo, responde solo el último mensaje con todo el contexto
-  const espera = cfg.espera_agrupar_seg === '' || cfg.espera_agrupar_seg == null ? 4 : Math.max(0, Number(cfg.espera_agrupar_seg))
+  // Agrupa ráfagas: si el cliente sigue escribiendo, solo responde la invocación del último mensaje, con todo el contexto
+  const hayNuevo = async () => {
+    const { data: u } = await sb.from('mensajes').select('wa_id,contenido,creado_en').eq('telefono', from).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+    if (!u || u.wa_id === msg.id) return false
+    return u.contenido !== '…' || Date.now() - new Date(u.creado_en).getTime() < 90000 // marcadores viejos sin procesar no cuentan
+  }
+  const espera = cfg.espera_agrupar_seg === '' || cfg.espera_agrupar_seg == null ? 5 : Math.max(0, Number(cfg.espera_agrupar_seg))
   if (espera > 0) {
     await sleep(espera * 1000)
-    const { data: ult } = await sb.from('mensajes').select('wa_id').eq('telefono', from).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
-    if (ult && ult.wa_id !== msg.id) { console.log('llegó otro mensaje del cliente; responde el último', from); return }
+    if (await hayNuevo()) { console.log('llegó otro mensaje del cliente; responde el último', from); return }
     await marcarLeido(msg.id)
   }
 
@@ -168,7 +172,13 @@ async function manejar(msg: any, nombreWA?: string) {
   const excep = await cargarExcepciones(sb)
   const calEspecial = excep.size ? ' Calendario especial (próximas fechas): ' + [...excep.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 12)
     .map(([f, e]) => `${f} ${e.tipo === 'cerrado' ? 'SIN producción ni entregas' + (e.nota ? ` (${e.nota})` : '') : 'producción extra' + (e.nota ? ` (${e.nota})` : '')}`).join('; ') + '.' : ''
-  const system = `${cfg.system_prompt}\n\n[Contexto del sistema] Hoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
+  const ent = await estadoEntrega(sb, cfg, excep)
+  const entregaAhora = ent.mismoDia
+    ? `[Entrega ahora] HOY sí se toman pedidos nuevos (entregas${ent.cierre ? ` hasta las ${ent.cierre.texto}` : ''}); los sabores y cantidades exactas salen de consultar_stock.`
+    : `[Entrega ahora] HOY NO se toman pedidos nuevos (${ent.hoySeAcaboTodo ? 'ya se acabaron las galletas de hoy' : ent.motivoNoHoy}). La próxima fecha de entrega es ${ent.proxima ? etiquetaEntrega(ent.proxima, ent.hoy, ent.cierre) : 'por definir'} (${ent.proxima ?? ''}). NUNCA digas que hay galletas "para hoy"; no cambies esta versión durante la conversación.`
+  const { data: aprend } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(30)
+  const aprendizajes = (aprend ?? []).length ? `\n\n[Aprendizajes aprobados por el equipo — aplícalos siempre]\n${(aprend ?? []).map((x: any) => '- ' + x.regla).join('\n')}` : ''
+  const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}.${calEspecial} Franjas de entrega: ${cfg.franjas_entrega}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido
@@ -198,7 +208,9 @@ async function manejar(msg: any, nombreWA?: string) {
     const partes = respuesta.split(/\n{2,}/)
     const nuevas = partes.filter((p) => p.trim() === '[[FOTOS]]' || !p.split('\n').map(norm).filter(Boolean).every((l) => dicho.has(l)))
     if (!pregunto && nuevas.some((p) => p.trim() !== '[[FOTOS]]') && nuevas.length < partes.length) { console.log('se omiten mensajes repetidos', from); respuesta = nuevas.join('\n\n') }
-    await enviarNatural(from, respuesta, ctx, msg.id, cfg)
+    // Si el cliente escribió mientras yo preparaba la respuesta, la descarto: la invocación del último mensaje responde una sola vez con todo
+    if (await hayNuevo()) { console.log('llegó otro mensaje mientras respondía; se descarta', from); return }
+    await enviarNatural(from, respuesta, ctx, msg.id, cfg, hayNuevo)
     // Seguimiento: si el bot dejó algo pendiente del cliente, se programa el recordatorio
     // Si quedó una pregunta abierta y la venta no está cerrada, también se programa retomar la conversación
     const cerrado = ctx.pedidoCreado ? true : pa ? (pa.pagado || /efectivo/i.test(pa.metodo_pago ?? '')) : false
@@ -210,7 +222,7 @@ async function manejar(msg: any, nombreWA?: string) {
 }
 
 // Envía la respuesta en varios mensajes cortos con "escribiendo…" y pausas; [[FOTOS]] marca dónde van las fotos del catálogo.
-async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: string, cfg: Record<string, string>) {
+async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: string, cfg: Record<string, string>, hayNuevo: () => Promise<boolean>) {
   const simular = cfg.simular_escritura !== 'no'
   const msPorCaracter = Number(cfg.velocidad_escritura_ms) > 0 ? Number(cfg.velocidad_escritura_ms) : 35
   const partes = respuesta.replace(/\s*\[\[FOTOS\]\]\s*/g, '\n\n[[FOTOS]]\n\n').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
@@ -229,6 +241,7 @@ async function enviarNatural(to: string, respuesta: string, ctx: Ctx, replyTo: s
   for (const p of partes) {
     if (p === '[[FOTOS]]') { await enviarFotos(); continue }
     if (simular) { await marcarLeido(replyTo); await sleep(Math.min(Math.max(p.length * msPorCaracter, 1200), 5000)) }
+    if (await hayNuevo()) { console.log('el cliente escribió mientras enviaba; se detiene el resto', to); return }
     const id = await sendText(to, p)
     await guardar(p, id)
   }

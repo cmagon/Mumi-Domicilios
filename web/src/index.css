@@ -296,3 +296,5 @@ main.ancho { max-width: 1240px; padding: 8px 12px; }
 .cal-sheet { border-top: 1px solid var(--bd); padding-top: 8px; }
 .aviso-pedidos { background: #fff0c2; color: #6b4a00; border-radius: 8px; padding: 6px 8px; font-size: 13px; margin-top: 6px; }
 .selector-fecha { text-transform: capitalize; width: 100%; text-align: left; }
+
+.regla { padding: 8px 0; border-top: 1px solid var(--bd); display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
