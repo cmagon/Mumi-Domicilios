@@ -5,6 +5,7 @@ import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import assert from 'node:assert'
+import { DATA } from './fake-supabase.mjs'
 
 const aqui = path.dirname(fileURLToPath(import.meta.url))
 const out = path.join(aqui, '.out.mjs')
@@ -42,4 +43,10 @@ assert.deepEqual(r.textos, ['Hola 😊', '¿Cuántas quieres?'], `respuesta ines
 modeloVacio = true
 r = await enviar('hola', 'w1')
 assert.ok(r.textos.some((t) => t.includes('Dame un momento')), `sin mensaje de espera: ${JSON.stringify(r.textos)}`)
+
+// 3) Ráfaga: si el cliente escribe otro mensaje mientras el bot prepara la respuesta, esta se descarta (responde solo el último, una vez)
+modeloVacio = false
+DATA.mensajes[0] = { rol: 'user', contenido: 'otro mensaje', wa_id: 'w9', creado_en: new Date().toISOString() }
+r = await enviar('hola', 'w2')
+assert.deepEqual(r.textos, [], `debió descartar la respuesta por mensaje nuevo: ${JSON.stringify(r.textos)}`)
 console.log('✅ Pruebas de humo del bot: OK')

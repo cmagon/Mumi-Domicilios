@@ -36,3 +36,46 @@ export async function analizarSesiones(sb: SupabaseClient, cfg: Record<string, s
   }
   return hechas
 }
+
+const SISTEMA_APRENDER = `Eres el coach del bot de ventas de Mumi (galletas por WhatsApp). Lee la conversación entre el Cliente, el Bot y el Equipo y detecta fricciones atribuibles al BOT: repetir información o preguntas, responder varias veces a mensajes seguidos, contradecirse (decir que hay galletas y luego que no), insistir en algo que el cliente ya resolvió, ignorar lo que dijo el cliente, pedir datos ya dados, mensajes confusos o no entender jerga y errores de escritura.
+Responde SOLO un JSON: {"calidad":1-5,"fricciones":["..."],"reglas":["..."]}
+"reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. NUNCA incluyas datos personales, nombres, teléfonos ni precios. No repitas reglas que ya existen (te las paso). Si no hubo fricción: calidad 5 y listas vacías.`
+
+const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+
+// Aprendizaje continuo: revisa conversaciones cerradas (con o sin venta) y propone reglas nuevas (quedan "pendientes" hasta que el admin las active)
+export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string, string>, limite = 3): Promise<{ revisadas: number; reglas: number }> {
+  const { data: ses } = await sb.from('chat_sesiones').select('telefono,inicio,fin').gte('mensajes_cliente', 2)
+    .lt('fin', new Date(Date.now() - 3600 * 1000).toISOString()).order('fin', { ascending: false }).limit(40)
+  if (!ses?.length) return { revisadas: 0, reglas: 0 }
+  const { data: hechas } = await sb.from('chats_revision').select('telefono,sesion_inicio').in('telefono', [...new Set(ses.map((x) => x.telefono))])
+  const ya = new Set((hechas ?? []).map((h) => `${h.telefono}|${new Date(h.sesion_inicio).getTime()}`))
+  const pend = ses.filter((x) => !ya.has(`${x.telefono}|${new Date(x.inicio).getTime()}`)).slice(0, limite)
+  if (!pend.length) return { revisadas: 0, reglas: 0 }
+  const { data: exist } = await sb.from('bot_aprendizajes').select('regla').neq('estado', 'descartada').limit(60)
+  const existentes = (exist ?? []).map((x) => x.regla as string)
+  const vistas = new Set(existentes.map(norm))
+  const prov = await construirProveedor(sb, cfg)
+  let revisadas = 0, reglas = 0
+  for (const s of pend) {
+    try {
+      const { data: msgs } = await sb.from('mensajes').select('rol,contenido').eq('telefono', s.telefono)
+        .gte('creado_en', s.inicio).lte('creado_en', s.fin).order('creado_en').limit(100)
+      const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
+      const out = await chat(prov, SISTEMA_APRENDER, [{ role: 'user', content: `Reglas que ya existen:\n${existentes.map((r) => '- ' + r).join('\n') || '(ninguna)'}\n\nConversación:\n${texto}` }], [], async () => ({}))
+      const j = out.match(/\{[\s\S]*\}/)
+      if (!j) continue
+      const r = JSON.parse(j[0])
+      const fricciones = (Array.isArray(r.fricciones) ? r.fricciones : []).map((x: unknown) => String(x).slice(0, 200)).slice(0, 5)
+      for (const regla of (Array.isArray(r.reglas) ? r.reglas : []).slice(0, 3)) {
+        const t = String(regla).trim().slice(0, 240)
+        if (t.length < 15 || vistas.has(norm(t))) continue
+        vistas.add(norm(t)); reglas++
+        await sb.from('bot_aprendizajes').insert({ regla: t, evidencia: fricciones.join(' · ') || null, origen_telefono: s.telefono, estado: 'pendiente' })
+      }
+      await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, calidad: Math.min(5, Math.max(1, Number(r.calidad) || 3)), fricciones }, { onConflict: 'telefono,sesion_inicio' })
+      revisadas++
+    } catch (e) { console.error('aprenderDeSesion', e) }
+  }
+  return { revisadas, reglas }
+}
