@@ -9,6 +9,7 @@ import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
 import { sinNumeroPedido } from '../whatsapp-webhook/texto.ts'
 import { humanoTardo } from '../whatsapp-webhook/humano.ts'
+import { resumenAdmin } from '../whatsapp-webhook/adminresumen.ts'
 import { analizarSesiones, aprenderDeSesiones, aprenderDelEquipo } from '../whatsapp-webhook/analisis.ts'
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
@@ -29,6 +30,8 @@ Deno.serve(async (req) => {
     await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`, { method: 'POST', headers: { 'x-cron-secret': secreto, 'content-type': 'application/json' }, body: JSON.stringify({ reanudar: h.telefono }) }).catch(() => null)
     retomados++
   }
+  // 1b) Resúmenes al administrador (6 p. m. y antes de que se cierre su ventana de 24 h)
+  await resumenAdmin(sb, cfg).catch((e) => console.error('resumenAdmin', e))
   // 2) Aprovecha la ejecución del cron para analizar y aprender de unas pocas conversaciones (solo unas veces por hora, aunque el cron corra cada minuto)
   if (new Date().getMinutes() % 10 < 2) {
     await analizarSesiones(sb, cfg, 3).catch(() => 0)
