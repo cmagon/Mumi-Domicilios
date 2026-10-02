@@ -192,7 +192,7 @@ export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, stri
   const motivoNoHoy = puedeHoy ? null
     : !diaProd ? 'hoy no es día de producción'
     : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes de ${cfg.limite_pedidos_hoy === 'cierre' ? 'que terminen' : 'que empiecen'} las entregas)`
-    : 'aún no se ha registrado el horneado de hoy'
+    : 'todavía no hay producción confirmada para hoy (el equipo la confirma poco antes de hornear)'
   return { hoy, margen, cierre, filasHoy, diaProd, enHorario, puedeHoy, hoySeAcaboTodo, mismoDia: puedeHoy && !hoySeAcaboTodo, motivoNoHoy,
     proxima: proximaProduccion(hoy, dias, false, ex) }
 }
@@ -261,7 +261,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         hoy: `${diaSemana(hoy)} ${hoy}`, modo: modoHoy ? 'mismo_dia' : 'agendar', fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha),
         como_decirlo: modoHoy ? `Hoy tenemos disponibles estas galletas${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}`
           : `Para ${etiqueta(fecha)} tenemos ${seProduce ? 'producción nueva' : 'estas galletas disponibles'}`,
-        ...(modoHoy ? {} : { hoy_no_se_toman_pedidos: motivoHoy, regla: 'NO digas que hay galletas "para hoy": hoy no se toman pedidos. Habla siempre de la fecha_entrega.' }),
+        ...(modoHoy ? {} : { hoy_no_se_toman_pedidos: motivoHoy, regla: 'NO digas que hay galletas "para hoy": hoy no se toman pedidos. Habla siempre de la fecha_entrega. NUNCA expliques el motivo interno (horneado, registro, sistema, límites): al cliente solo dile con naturalidad que para hoy no tienes producción confirmada por ahora (o que ya cerraron los pedidos de hoy, según el caso) y ofrécele agendar para la fecha_entrega.' }),
         hoy_ya_se_acabo_todo: hoySeAcaboTodo,
         motivo_no_es_hoy: modoHoy ? null : motivoHoy, franjas_entrega: cfg.franjas_entrega,
         sabores_disponibles_para_esa_fecha: sabores.filter((x) => x.disponible),
