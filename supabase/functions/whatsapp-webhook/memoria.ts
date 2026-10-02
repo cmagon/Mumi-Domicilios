@@ -14,12 +14,12 @@ export async function memoriaCliente(sb: SupabaseClient, prov: Provider, telefon
   const { data: prev } = await sb.from('mensajes').select('creado_en').eq('telefono', telefono).lt('creado_en', inicio).order('creado_en', { ascending: false }).limit(1).maybeSingle()
   const { data: peds } = await sb.from('pedidos').select('numero,creado_en,total,metodo_pago,modalidad,direccion,cliente_nombre,estado,pedido_items(cantidad,productos(nombre))')
     .or(`chat_telefono.eq.${telefono},cliente_telefono.eq.${telefono}`).neq('estado', 'cancelado').order('creado_en', { ascending: false }).limit(5)
-  if (!prev && !(peds ?? []).length) return ''
+  // El resumen guardado sirve aunque ya se hayan borrado los chats viejos (retención de 90 días)
+  const { data: memo } = await sb.from('clientes_memoria').select('resumen,hasta').eq('telefono', telefono).maybeSingle()
+  if (!prev && !(peds ?? []).length && !memo?.resumen) return ''
 
-  let resumen = ''
+  let resumen = memo?.resumen ?? ''
   if (prev) {
-    const { data: memo } = await sb.from('clientes_memoria').select('resumen,hasta').eq('telefono', telefono).maybeSingle()
-    resumen = memo?.resumen ?? ''
     if (!memo || new Date(memo.hasta).getTime() < new Date(prev.creado_en).getTime()) {
       try {
         const { data: msgs } = await sb.from('mensajes').select('rol,contenido').eq('telefono', telefono).lt('creado_en', inicio).order('creado_en', { ascending: false }).limit(60)

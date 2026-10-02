@@ -10,6 +10,7 @@ import { TZ } from '../whatsapp-webhook/tools.ts'
 import { sinNumeroPedido } from '../whatsapp-webhook/texto.ts'
 import { humanoTardo } from '../whatsapp-webhook/humano.ts'
 import { resumenAdmin } from '../whatsapp-webhook/adminresumen.ts'
+import { depurarChats } from '../whatsapp-webhook/retencion.ts'
 import { analizarSesiones, aprenderDeSesiones, aprenderDelEquipo } from '../whatsapp-webhook/analisis.ts'
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
@@ -35,6 +36,9 @@ Deno.serve(async (req) => {
   // 1c) Avisos conversacionales viejos (más de 48 h) que nadie cerró: se ocultan solos
   await sb.from('notificaciones').update({ leida: true }).eq('leida', false).in('tipo', ['atencion', 'sin_respuesta', 'pedido_grande', 'sin_stock'])
     .lt('creado_en', new Date(Date.now() - 48 * 3600 * 1000).toISOString()).not('titulo', 'like', 'Falta la dirección%')
+  // 1d) De madrugada (2 a 5 a. m.): chats de más de 90 días se resumen y se borran (solo queda el resumen del cliente)
+  { const hCO = Number(new Date().toLocaleString('en-US', { timeZone: TZ, hour: 'numeric', hour12: false })) % 24
+    if (hCO >= 2 && hCO < 5) await depurarChats(sb, cfg, 5).catch((e) => console.error('depurarChats', e)) }
   // 2) Aprovecha la ejecución del cron para analizar y aprender de unas pocas conversaciones (solo unas veces por hora, aunque el cron corra cada minuto)
   if (new Date().getMinutes() % 10 < 2) {
     await analizarSesiones(sb, cfg, 3).catch(() => 0)

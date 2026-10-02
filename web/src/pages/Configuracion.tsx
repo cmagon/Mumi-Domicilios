@@ -13,7 +13,7 @@ type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: strin
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'minutos_humano_sin_responder', 'proveedor_ia', 'motor_audio',
   'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'local_nombre', 'local_direccion', 'local_lat', 'local_lng', 'barrios_sin_domicilio', 'seguimiento_1_min',
-  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'limite_pedidos_hoy', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url', 'prompt_admin', 'modelo_admin']
+  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'limite_pedidos_hoy', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url', 'retencion_chat_dias', 'prompt_admin', 'modelo_admin']
 
 export default function Configuracion() {
   const toast = useToast()
@@ -198,6 +198,8 @@ export default function Configuracion() {
         <div className="row">
           <div><label>Enviar desde (hora)</label><input type="number" min={0} max={23} value={f.horario_inicio ?? '7'} onChange={(e) => set('horario_inicio', e.target.value)} /></div>
           <div><label>Hasta (hora)</label><input type="number" min={1} max={24} value={f.horario_fin ?? '21'} onChange={(e) => set('horario_fin', e.target.value)} /></div></div>
+        <label>Días que se conservan los chats (por defecto 90; 0 = nunca borrar)</label><input type="number" min={0} value={f.retencion_chat_dias ?? '90'} onChange={(e) => set('retencion_chat_dias', e.target.value)} />
+        <p className="muted">Pasado ese tiempo, de madrugada se borran los mensajes viejos de cada chat y solo se guarda un resumen del cliente (por si vuelve). Los pedidos y sus comprobantes no se tocan. Las estadísticas de conversaciones solo cuentan los chats conservados.</p>
         <p className="muted">WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</p>
       </div>
 
