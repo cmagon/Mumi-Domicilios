@@ -61,7 +61,11 @@ export async function vistaCancelacion(sb: SupabaseClient, fecha: string) {
 
 export async function ejecutarCancelacion(sb: SupabaseClient, fecha: string, motivo: string | null): Promise<string> {
   const { ped } = await vistaCancelacion(sb, fecha)
-  if (!ped.length) return `No hay pedidos activos para ${dia(fecha)}.`
+  // El día queda CERRADO en el calendario: el bot deja de ofrecer y de tomar reservas para esa fecha
+  await sb.from('calendario_produccion').upsert({ fecha, tipo: 'cerrado', nota: motivo ? motivo.slice(0, 120) : 'Sin producción' }, { onConflict: 'fecha' })
+  const cierre = `🔒 Cerré ${etiqueta(fecha, fechaBogota())} en el calendario: el bot ya no ofrece ni reserva para esa fecha (puedes reabrirlo en Calendario).`
+  if (!ped.length) return `${cierre}
+No había pedidos activos para cancelar.`
   await sb.from('pedidos').update({ estado: 'cancelado' }).in('id', ped.map((p) => p.id))
   const porTel = new Map<string, Ped[]>()
   const sinCanal: string[] = []
@@ -79,7 +83,7 @@ export async function ejecutarCancelacion(sb: SupabaseClient, fecha: string, mot
     const id = await sendText(tel, `Hola ${nombre.split(' ')[0]} 😊 Lamentamos avisarte que tuvimos que cancelar tu pedido para ${etiqueta(fecha, fechaBogota())}${motivo ? ': ' + motivo : ''}. Una disculpa por el inconveniente 🙏${pago} Cuando quieras te ayudamos a reprogramarlo.`)
     if (id) { avisados++; await sb.from('mensajes').insert({ telefono: tel, rol: 'assistant', contenido: 'Aviso de cancelación del pedido enviado por el equipo', wa_id: id }) } else sinCanal.push(`${nombre} (${lista[0].cliente_telefono || tel}) — WhatsApp no aceptó el mensaje`)
   }
-  return `✅ Cancelé ${ped.length} pedido${ped.length === 1 ? '' : 's'} de ${etiqueta(fecha, fechaBogota())} y avisé a ${avisados} cliente${avisados === 1 ? '' : 's'}.` +
+  return `${cierre}\n✅ Cancelé ${ped.length} pedido${ped.length === 1 ? '' : 's'} de ${etiqueta(fecha, fechaBogota())} y avisé a ${avisados} cliente${avisados === 1 ? '' : 's'}.` +
     (sinCanal.length ? `\n\n⚠️ NO pude avisar a:\n${sinCanal.map((x) => '• ' + x).join('\n')}\nEscríbeles tú por otro medio.` : '')
 }
 
