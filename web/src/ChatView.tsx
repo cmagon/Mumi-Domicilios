@@ -78,7 +78,11 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
     const lista = ((m.data ?? []) as unknown as Msg[]).reverse()
     // Marca como leído solo cuando hay un mensaje nuevo (evita un ciclo de actualizaciones)
     const ult = lista[lista.length - 1]?.id
-    if (ult && ult !== visto.current && !document.hidden) { visto.current = ult; marcarLeido() }
+    if (ult && ult !== visto.current && !document.hidden) {
+      visto.current = ult; marcarLeido()
+      // Si atiende una persona, recién ahora (al abrir el chat) se marca como leído en WhatsApp
+      if ((c.data as { humano?: boolean } | null)?.humano && lista[lista.length - 1].rol === 'user') void supabase.functions.invoke('marcar-leido', { body: { telefono } })
+    }
     setMsgs(lista); setConv(c.data as typeof conv); setAvisos((a.data ?? []) as Aviso[])
     const rutas = [...lista.map((x) => x.media_path), ...((a.data ?? []) as Aviso[]).map((x) => x.media_path)].filter(Boolean) as string[]
     if (rutas.length) {
