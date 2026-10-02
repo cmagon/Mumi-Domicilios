@@ -345,3 +345,5 @@ header.top .salir:hover:not(:disabled) { background: #fff; color: var(--p); bord
 
 .mapa-pin { height: 280px; border-radius: 12px; border: 1px solid var(--bd); margin-top: 8px; z-index: 0; } .pin-mapa { font-size: 30px; line-height: 1; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); background: none; border: 0; }
 .leaflet-container { font-family: inherit; }
+
+.grupo-reglas { border: 1px solid var(--bd); border-radius: 10px; margin: 6px 0; padding: 0 10px; background: #fff; } .grupo-reglas summary { cursor: pointer; padding: 8px 0; font-size: 14px; text-transform: capitalize; } .grupo-reglas summary b { background: var(--s); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 11px; margin-left: 6px; }

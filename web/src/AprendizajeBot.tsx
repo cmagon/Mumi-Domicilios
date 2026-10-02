@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { AsyncButton, Confirmar, useToast, type Confirmacion } from './ui'
 
-type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null }
+type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada' | 'integrada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null }
 const fecha = (iso?: string | null) => (iso ? new Date(iso.length === 10 ? iso + 'T12:00:00' : iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 type Respaldo = { id: string; creado_en: string; automatico: boolean; nota: string | null; config: Record<string, string>; aprendizajes: unknown[] }
 
 // Aprendizaje continuo (reglas que la IA propone a partir de las conversaciones) y respaldos del bot (prompt + modelo + reglas)
-export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldos' }) {
+export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?: 'reglas' | 'respaldos'; onPromptActualizado?: () => void }) {
   const toast = useToast()
   const [reglas, setReglas] = useState<Regla[]>([])
   const [resp, setResp] = useState<Respaldo[]>([])
@@ -42,6 +42,15 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
     if (error) { toast(error.message, 'err'); return false }
     setNueva(''); setNuevaHasta(''); toast('Regla agregada y activa'); cargar()
   }
+  const integrar = (x: Regla) => setConf({
+    titulo: 'Agregar al prompt maestro', okText: 'Agregar al prompt',
+    texto: <>Se agregará esta regla al <b>final del prompt maestro</b> (sección "Aprendizajes integrados") y el prompt se actualizará. Antes se guarda un <b>respaldo</b> automático del prompt actual, que puedes restaurar en Respaldos.<div className="regla" style={{ marginTop: 8 }}>{x.regla}</div></>,
+    onOk: async () => {
+      const { error } = await supabase.rpc('integrar_regla', { p_id: x.id })
+      if (error) { toast(error.message, 'err'); return false }
+      toast('Regla integrada al prompt maestro (respaldo guardado)'); cargar(); onPromptActualizado?.()
+    },
+  })
   const revisar = async () => {
     const { data, error } = await supabase.functions.invoke('analizar-chats', { body: { modo: 'aprender', limite: 5 } })
     if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo revisar', 'err'); return false }
@@ -66,7 +75,20 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
     const a = document.createElement('a'); a.href = url; a.download = `respaldo-bot-${b.creado_en.slice(0, 16).replace(/[:T]/g, '-')}.json`; a.click(); URL.revokeObjectURL(url)
   }
 
-  const pendientes = reglas.filter((r) => r.estado === 'pendiente'), activas = reglas.filter((r) => r.estado === 'activa')
+  const pendientes = reglas.filter((r) => r.estado === 'pendiente'), activas = reglas.filter((r) => r.estado === 'activa'), integradas = reglas.filter((r) => r.estado === 'integrada')
+  // Agrupadas por fecha (minimizadas): una sección plegable por día
+  const porFecha = (l: Regla[]) => {
+    const m = new Map<string, Regla[]>()
+    l.forEach((r) => { const k = r.creado_en.slice(0, 10); m.set(k, [...(m.get(k) ?? []), r]) })
+    return [...m.entries()].sort(([a], [b]) => b.localeCompare(a))
+  }
+  const Grupos = ({ l, abiertoPrimero }: { l: Regla[]; abiertoPrimero?: boolean }) => (
+    <>{porFecha(l).map(([dia, rs], i) => (
+      <details className="grupo-reglas" key={dia} open={abiertoPrimero && i === 0 && false}>
+        <summary>📅 {new Date(dia + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })} <b>{rs.length}</b></summary>
+        {rs.map((x) => <Fila key={x.id} x={x} />)}
+      </details>))}</>
+  )
   const Fila = ({ x }: { x: Regla }) => (
     <div className="regla">
       {edit?.id === x.id
@@ -78,9 +100,10 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
           <div className="muted">📅 Propuesta el {fecha(x.creado_en)}{x.estado === 'activa' && x.decidido_en ? ` · activa desde ${fecha(x.decidido_en)}` : ''}{x.vigente_hasta ? ` · ${x.vigente_hasta < new Date().toLocaleDateString('en-CA') ? '⏹ venció' : 'vigente hasta'} ${fecha(x.vigente_hasta)}` : ' · sin fecha de vencimiento'}</div>
           <div className="row">
             {x.estado === 'pendiente'
-              ? <><AsyncButton className="sm" okText="Activa" onClick={() => decidir(x, 'activa')}>✓ Activar</AsyncButton><AsyncButton className="sec sm" okText="Descartada" onClick={() => decidir(x, 'descartada')}>Descartar</AsyncButton></>
-              : <AsyncButton className="sec sm" okText="Desactivada" onClick={() => decidir(x, 'descartada')}>Desactivar</AsyncButton>}
-            <button className="sec sm" onClick={() => setEdit({ id: x.id, texto: x.regla, hasta: x.vigente_hasta ?? '' })}>Editar</button>
+              ? <><AsyncButton className="sm" okText="Activa" onClick={() => decidir(x, 'activa')}>✓ Activar</AsyncButton><button className="sec sm" onClick={() => integrar(x)}>📌 Al prompt</button><AsyncButton className="sec sm" okText="Descartada" onClick={() => decidir(x, 'descartada')}>Descartar</AsyncButton></>
+              : x.estado === 'integrada' ? <span className="badge ok">En el prompt maestro</span>
+              : <><button className="sec sm" onClick={() => integrar(x)}>📌 Agregar al prompt</button><AsyncButton className="sec sm" okText="Desactivada" onClick={() => decidir(x, 'descartada')}>Desactivar</AsyncButton></>}
+            {x.estado !== 'integrada' && <button className="sec sm" onClick={() => setEdit({ id: x.id, texto: x.regla, hasta: x.vigente_hasta ?? '' })}>Editar</button>}
           </div></>}
     </div>
   )
@@ -91,10 +114,11 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
         <p className="muted">La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</p>
         <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton></div>
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Por aprobar ({pendientes.length})</h3>
-        {pendientes.map((x) => <Fila key={x.id} x={x} />)}
+        <Grupos l={pendientes} />
         {!pendientes.length && <p className="muted">No hay reglas propuestas. Se revisan solas unas pocas conversaciones en cada ciclo del cron.</p>}
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Activas ({activas.length})</h3>
-        {activas.map((x) => <Fila key={x.id} x={x} />)}
+        <Grupos l={activas} />
+        {integradas.length > 0 && <><h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Ya en el prompt maestro ({integradas.length})</h3><Grupos l={integradas} /></>}
         <label>Agregar una regla tú mismo</label>
         <div className="row"><input placeholder="ej. Si el cliente escribe Nequii, entiende Nequi" value={nueva} onChange={(e) => setNueva(e.target.value)} /><input type="date" style={{ maxWidth: 170 }} title="Vigente hasta (opcional)" min={new Date().toLocaleDateString('en-CA')} value={nuevaHasta} onChange={(e) => setNuevaHasta(e.target.value)} /><AsyncButton okText="Agregada" onClick={agregar}>Agregar</AsyncButton></div>
       </div>}
