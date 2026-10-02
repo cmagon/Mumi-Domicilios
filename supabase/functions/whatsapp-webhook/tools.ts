@@ -46,9 +46,11 @@ export function cierreEntregas(franjas: string): { min: number; texto: string } 
   return { min, texto: horaHablada(h, m) }
 }
 // Inicio de la primera franja de entrega (ej. "14:00-16:00,16:00-18:00" → 14:00)
-export function inicioEntregas(franjas: string): { min: number } | null {
+export function inicioEntregas(franjas: string): { min: number; texto: string } | null {
   const ini = [...(franjas ?? '').matchAll(/(?:^|,)\s*(\d{1,2})(?::(\d{2}))?\s*-/g)].map((m) => +m[1] * 60 + (+m[2] || 0))
-  return ini.length ? { min: Math.min(...ini) } : null
+  if (!ini.length) return null
+  const min = Math.min(...ini)
+  return { min, texto: horaHablada(Math.floor(min / 60), min % 60) }
 }
 // Punto de referencia del límite para pedidos de hoy: por defecto el INICIO de las entregas (config limite_pedidos_hoy = 'inicio'), o su cierre ('cierre')
 export function limiteRef(cfg: Record<string, string>): { min: number } | null {
@@ -153,8 +155,10 @@ export const TOOLS: Tool[] = [
       required: ['nombre', 'telefono_contacto', 'motivo', 'resumen'] } },
 ]
 
+// Ventana de entregas de hoy para decirla al cliente: "entregas desde las 2:00 de la tarde hasta las 5:30 de la tarde"
+export const ventanaEntregas = (c: { texto: string; desde?: string } | null) => (c ? `entregas ${c.desde ? `desde las ${c.desde} ` : ''}hasta las ${c.texto}` : '')
 export const etiquetaEntrega = (f: string, hoy: string, cierre: { texto: string } | null) =>
-  f === hoy ? `hoy${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
+  f === hoy ? `hoy${cierre ? ` (${ventanaEntregas(cierre)})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
 
 // Estado de entrega de AHORA (una sola fuente de verdad para el bot): ¿se pueden tomar pedidos para hoy o se agenda a la próxima producción?
 // Minutos del día (hora de Colombia) de un instante; null si no es de hoy
@@ -179,7 +183,8 @@ export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, stri
   const hoy = fechaBogota()
   const dias = cfg.dias_produccion ?? ''
   const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
-  const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
+  const cierre0 = cierreEntregas(cfg.franjas_entrega ?? '')
+  const cierre = cierre0 ? { ...cierre0, desde: inicioEntregas(cfg.franjas_entrega ?? '')?.texto } : null
   const filasHoy = ((await sb.rpc('stock_resumen', { p_fecha: hoy })).data ?? []) as any[]
   const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
   const diaProd = esDiaProduccion(hoy, dias, ex)
@@ -261,7 +266,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       const motivoHoy = hoySeAcaboTodo ? 'hoy ya se acabaron todas las galletas' : motivoNoHoy
       return {
         hoy: `${diaSemana(hoy)} ${hoy}`, modo: modoHoy ? 'mismo_dia' : 'agendar', fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha),
-        como_decirlo: modoHoy && porConfirmar ? `Hoy hay producción nueva${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}; las cantidades se confirman al hornear, así que el pedido de hoy queda reservado` : modoHoy ? `Hoy tenemos disponibles estas galletas${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}`
+        como_decirlo: modoHoy && porConfirmar ? `Hoy hay producción nueva${cierre ? ` (${ventanaEntregas(cierre)})` : ''}; las cantidades se confirman al hornear, así que el pedido de hoy queda reservado` : modoHoy ? `Hoy tenemos disponibles estas galletas${cierre ? ` (${ventanaEntregas(cierre)})` : ''}`
           : `Para ${etiqueta(fecha)} tenemos ${seProduce ? 'producción nueva' : 'estas galletas disponibles'}`,
         ...(modoHoy ? {} : { hoy_no_se_toman_pedidos: motivoHoy, regla: 'NO digas que hay galletas "para hoy": hoy no se toman pedidos. Habla siempre de la fecha_entrega. NUNCA expliques el motivo interno (horneado, registro, sistema, límites): al cliente solo dile con naturalidad que para hoy no tienes producción confirmada por ahora (o que ya cerraron los pedidos de hoy, según el caso) y ofrécele agendar para la fecha_entrega.' }),
         hoy_ya_se_acabo_todo: hoySeAcaboTodo,

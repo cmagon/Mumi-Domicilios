@@ -11,7 +11,7 @@ import { mediaAdmin } from './adminmedia.ts'
 import { asistenteAdmin } from './adminpedido.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
-import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, type Ctx } from './tools.ts'
+import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, ventanaEntregas, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
 declare const EdgeRuntime: any
@@ -224,7 +224,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
     for (let i = cron.length - 1; i >= 0; i--) { const t = new Date((cron[i] as any).creado_en ?? 0).getTime(); if (!t || prev - t > 2 * 3600 * 1000) break; sesionInicio = t; prev = t } }
   const ent = await estadoEntrega(sb, cfg, excep, sesionInicio)
   const entregaAhora = ent.mismoDia
-    ? `[Entrega ahora] HOY sí se toman pedidos nuevos (entregas${ent.cierre ? ` hasta las ${ent.cierre.texto}` : ''}); los sabores y cantidades exactas salen de consultar_stock.${ent.porConfirmar ? ' Hoy hay producción: aún no se confirman las cantidades exactas, así que ofrécele los sabores de hoy como reserva (queda confirmada al hornear) sin hablar de registros ni sistemas internos.' : ''} Si antes en esta conversación ofreciste otra fecha porque hoy no había, ESO CAMBIÓ: ahora hay para hoy; ofrécele primero hoy (y avísale con naturalidad que acaba de haber disponibilidad) y no sigas con la fecha anterior sin preguntarle. Vuelve a llamar a consultar_stock antes de confirmar.`
+    ? `[Entrega ahora] HOY sí se toman pedidos nuevos (${ent.cierre ? ventanaEntregas(ent.cierre) + '; di siempre desde qué hora y hasta qué hora son las entregas de hoy' : 'entregas'}); los sabores y cantidades exactas salen de consultar_stock.${ent.porConfirmar ? ' Hoy hay producción: aún no se confirman las cantidades exactas, así que ofrécele los sabores de hoy como reserva (queda confirmada al hornear) sin hablar de registros ni sistemas internos.' : ''} Si antes en esta conversación ofreciste otra fecha porque hoy no había, ESO CAMBIÓ: ahora hay para hoy; ofrécele primero hoy (y avísale con naturalidad que acaba de haber disponibilidad) y no sigas con la fecha anterior sin preguntarle. Vuelve a llamar a consultar_stock antes de confirmar.`
     : `[Entrega ahora] HOY NO se toman pedidos nuevos (${ent.hoySeAcaboTodo ? 'ya se acabaron las galletas de hoy' : ent.motivoNoHoy}). La próxima fecha de entrega es ${ent.proxima ? etiquetaEntrega(ent.proxima, ent.hoy, ent.cierre) : 'por definir'} (${ent.proxima ?? ''}). NUNCA digas que hay galletas "para hoy" mientras este estado siga así. NUNCA le expliques al cliente el motivo interno (horneado sin registrar, límites, sistema); solo di que por ahora no hay producción confirmada para hoy (o que ya cerraron los pedidos de hoy) y ofrece agendar para la próxima fecha. Esta información se actualiza en cada mensaje: ignora lo que dijiste antes si contradice este estado.`
   let { data: aprendTodas, error: errA } = await sb.from('bot_aprendizajes').select('regla,vigente_hasta').eq('estado', 'activa').order('creado_en').limit(40)
   if (errA) ({ data: aprendTodas } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(40)) // migración 0035 pendiente
