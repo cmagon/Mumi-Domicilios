@@ -7,6 +7,7 @@ import { useConfig } from './hooks'
 import QRCode from 'qrcode'
 import { useEnVivo } from './enVivo'
 import TomarPedido from './TomarPedido'
+import Grabadora from './Grabadora'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
@@ -53,6 +54,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const [verPedidos, setVerPedidos] = useState(false)
   const [tomando, setTomando] = useState(false)
   const [nActivos, setNActivos] = useState(0)
+  const [audio, setAudio] = useState<{ blob: Blob; url: string } | null>(null)
   const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
   const archivo = useRef<HTMLInputElement>(null)
   const [ahora, setAhora] = useState(Date.now())
@@ -108,6 +110,15 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
       setFoto({ blob, url: URL.createObjectURL(blob) })
     } catch { toast('No se pudo leer la imagen', 'err') }
     if (archivo.current) archivo.current.value = ''
+  }
+  const enviarAudio = async () => {
+    if (!audio) return false
+    const ruta = `salientes/${telefono}/${Date.now()}.mp3`
+    const { error: eu } = await supabase.storage.from('comprobantes').upload(ruta, audio.blob, { contentType: 'audio/mpeg' })
+    if (eu) { toast(`No se pudo subir el audio: ${eu.message}`, 'err'); return false }
+    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, audio_path: ruta } })
+    if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo enviar el audio', 'err'); return false }
+    setAudio(null); cargar()
   }
   const enviar = async () => {
     const t = texto.trim()
@@ -177,8 +188,10 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
               <div className={`fila-msg ${m.rol === 'user' ? 'izq' : 'der'}`}>
               <div className={`burbuja ${clase} ${nota ? 'nota' : ''}`}>
                 {m.rol !== 'user' && <span className="quien">{m.rol === 'admin' ? 'Equipo' : '🤖 Bot'}</span>}
-                {m.media_path && urls[m.media_path] && <a href={urls[m.media_path]} target="_blank"><img className="chat-img" src={urls[m.media_path]} alt="imagen del cliente" /></a>}
-                <Contenido texto={m.contenido} />
+                {m.media_path && urls[m.media_path] && (/\.(mp3|ogg|m4a|webm|aac)$/i.test(m.media_path)
+                  ? <audio className="chat-audio" controls src={urls[m.media_path]} />
+                  : <a href={urls[m.media_path]} target="_blank"><img className="chat-img" src={urls[m.media_path]} alt="imagen del cliente" /></a>)}
+                <Contenido texto={m.media_path && /\.(mp3|ogg|m4a|webm|aac)$/i.test(m.media_path) ? m.contenido.replace(/^🎤 Nota de voz del equipo:?\s*/, '') || 'Nota de voz' : m.contenido} />
                 <span className="hora">{d.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' })}</span>
               </div>
               </div>
@@ -192,9 +205,11 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
           <>
             <div className="rapidas">{RAPIDAS.map((r) => <button key={r} className="chip" onClick={() => { setTexto((t) => (t ? t + ' ' : '') + r); area.current?.focus() }}>{r}</button>)}</div>
             {foto && <div className="foto-prev"><img src={foto.url} alt="Vista previa" /><button className="ghost" onClick={() => setFoto(null)} aria-label="Quitar foto">✕</button><span className="muted">El texto se envía como pie de la foto</span></div>}
+            {audio && <div className="foto-prev"><audio controls src={audio.url} style={{ flex: 1, minWidth: 0 }} /><button className="ghost" onClick={() => setAudio(null)} aria-label="Descartar audio">✕</button><AsyncButton className="enviar" okText="" onClick={enviarAudio}>➤</AsyncButton></div>}
             <div className="compositor">
               <input ref={archivo} type="file" accept="image/*" hidden onChange={(e) => elegirFoto(e.target.files?.[0])} />
               <button className="sec adjuntar" aria-label="Adjuntar foto" onClick={() => archivo.current?.click()}>📷</button>
+              {!audio && <Grabadora onListo={(blob, url) => setAudio({ blob, url })} onError={(m) => toast(m, 'err')} />}
               <textarea ref={area} rows={1} placeholder="Escribe un mensaje" value={texto}
                 onChange={(e) => { setTexto(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 900) { e.preventDefault(); void enviar() } }} />
