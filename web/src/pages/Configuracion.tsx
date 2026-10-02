@@ -12,7 +12,7 @@ type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: strin
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'minutos_humano_sin_responder', 'proveedor_ia', 'motor_audio',
   'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'local_nombre', 'local_direccion', 'local_lat', 'local_lng', 'barrios_sin_domicilio', 'seguimiento_1_min',
-  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url']
+  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'limite_pedidos_hoy', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url']
 
 export default function Configuracion() {
   const toast = useToast()
@@ -202,8 +202,10 @@ export default function Configuracion() {
 <div>
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />
         <label>Franjas horarias de entrega</label><FranjasEditor valor={f.franjas_entrega ?? ''} onChange={(v) => set('franjas_entrega', v)} />
-        <label>Pedidos para el mismo día: minutos de anticipación antes del cierre de entregas (por defecto 60)</label>
+        <label>Pedidos para el mismo día: minutos de anticipación (por defecto 60)</label>
         <input type="number" min={0} value={f.anticipacion_minima_min ?? '60'} onChange={(e) => set('anticipacion_minima_min', e.target.value)} />
+        <label>Esos minutos se cuentan antes de…</label>
+        <select value={f.limite_pedidos_hoy ?? 'inicio'} onChange={(e) => set('limite_pedidos_hoy', e.target.value)}><option value="inicio">que EMPIECEN las entregas (primera franja)</option><option value="cierre">que TERMINEN las entregas (última franja)</option></select>
         <Switch checked={(f.permitir_reserva_sin_stock ?? 'si') !== 'no'} onChange={(v) => set('permitir_reserva_sin_stock', v ? 'si' : 'no')} label="Si no hay stock, dejar el pedido reservado para la siguiente producción (y avisarme)" />
       </div>
         </>)}
