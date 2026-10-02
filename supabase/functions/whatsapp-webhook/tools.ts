@@ -4,6 +4,7 @@ import { leerComprobante } from './ai.ts'
 import { notify } from './wa.ts'
 import { bloqueosPorEventos } from './avisos.ts'
 import { horaHablada } from './texto.ts'
+import { pushAdmin } from './push.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -101,6 +102,7 @@ async function pedidoObjetivo(sb: SupabaseClient, chat: string, numero?: number)
 }
 export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, detalle?: string, pedido_id?: string | null, telefono?: string) {
   await sb.from('notificaciones').insert({ tipo, titulo, detalle: detalle ?? null, pedido_id: pedido_id ?? null, telefono: telefono ?? null })
+  await pushAdmin(sb, titulo, detalle ?? '', { tag: 'aviso', url: '/chats' })
 }
 
 export type Ctx = {

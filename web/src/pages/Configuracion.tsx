@@ -6,6 +6,7 @@ import AvisosBot from '../AvisosBot'
 import { FranjasEditor } from '../Franjas'
 import MapaPin from '../MapaPin'
 import { sonidoActivo, setSonidoActivo, tono } from '../sonido'
+import { activarPush, desactivarPush, suscripcionActual, pushSoportado, instaladaIOS } from '../notificaciones'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
 type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string; activo: boolean }
@@ -20,6 +21,13 @@ export default function Configuracion() {
   const [f, setF] = useState<Record<string, string>>({})
   const [sec, setSec] = useState<string | null>(null)
   const [sonidoOn, setSonidoOn] = useState(sonidoActivo())
+  const [pushOn, setPushOn] = useState(false)
+  useEffect(() => { suscripcionActual().then((x) => setPushOn(!!x)).catch(() => {}) }, [])
+  const cambiarPush = async (v: boolean) => {
+    if (!v) { await desactivarPush(); setPushOn(false); return }
+    const r = await activarPush()
+    if (r.ok) { setPushOn(true); toast('Notificaciones activadas en este dispositivo') } else toast(r.error ?? 'No se pudo activar', 'err')
+  }
   const cambiarSonido = (v: boolean) => { setSonidoActivo(v); setSonidoOn(v); if (v) tono() }
   const [metodos, setMetodos] = useState<M[]>([])
   const [hist, setHist] = useState<H[]>([])
@@ -249,6 +257,9 @@ export default function Configuracion() {
         <p className="muted">El logo va solo en el encabezado. El favicon es el ícono de la pestaña y de la app instalada; si no subes uno, se usa el logo. Mejor un PNG cuadrado de al menos 512 × 512 px, con fondo.</p>
         <Switch checked={sonidoOn} onChange={cambiarSonido} label="Sonido de notificaciones en este dispositivo (nuevo mensaje de cliente o aviso)" />
         <button type="button" className="sec" onClick={() => tono()}>🔔 Probar sonido</button>
+        <p className="muted">En el celular, el sonido solo funciona con la app abierta y después de tocar la pantalla; si no oyes nada, sube el volumen de <b>multimedia</b> y quita el modo silencio (en iPhone, el interruptor lateral).</p>
+        <Switch checked={pushOn} onChange={cambiarPush} label="Notificaciones en la barra de tareas / pantalla (funcionan con la app cerrada o en segundo plano)" />
+        {!pushSoportado() && <p className="muted">{instaladaIOS() ? 'En iPhone/iPad: abre el sitio en Safari → Compartir → "Añadir a pantalla de inicio", ábrela desde el ícono y activa esto de nuevo.' : 'Este navegador no admite notificaciones push.'}</p>}
       </div>
         </>)}
       </Modal>

@@ -9,7 +9,7 @@ import { useEnVivo } from './enVivo'
 import TomarPedido from './TomarPedido'
 import Grabadora from './Grabadora'
 
-type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
+type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null; wa_id?: string | null; cita?: string | null }
 type Aviso = { id: string; tipo: string; titulo: string; detalle: string | null; pedido_id: string | null; media_path?: string | null }
 export const ICONO_AVISO: Record<string, string> = { pago: '💰', pago_revision: '🧾', atencion: '🙋', sin_respuesta: '❓', cambio: '✏️', pedido_grande: '📦', sin_stock: '🍪', cancelacion: '🚫' }
 const RAPIDAS = ['Hola 😊 soy del equipo de Mumi', 'Ya te confirmo, un momento por favor 🙏', 'Gracias por tu pedido 🍪', '¿Me confirmas tu dirección, por favor?']
@@ -55,6 +55,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const [tomando, setTomando] = useState(false)
   const [nActivos, setNActivos] = useState(0)
   const [audio, setAudio] = useState<{ blob: Blob; url: string } | null>(null)
+  const [citando, setCitando] = useState<Msg | null>(null)
   const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
   const archivo = useRef<HTMLInputElement>(null)
   const [ahora, setAhora] = useState(Date.now())
@@ -67,12 +68,14 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   }, [telefono])
 
   const cargar = useCallback(async () => {
-    const [m, c, a] = await Promise.all([
-      supabase.from('mensajes').select('id,rol,contenido,creado_en,media_path').eq('telefono', telefono).order('creado_en', { ascending: false }).limit(300),
+    const consulta = (cols: string) => supabase.from('mensajes').select(cols).eq('telefono', telefono).order('creado_en', { ascending: false }).limit(300)
+    const [m0, c, a] = await Promise.all([
+      consulta('id,rol,contenido,creado_en,media_path,wa_id,cita'),
       supabase.from('conversaciones').select('humano,humano_desde,nombre_wa').eq('telefono', telefono).maybeSingle(),
       supabase.from('notificaciones').select('*').eq('telefono', telefono).eq('leida', false).order('creado_en', { ascending: false }),
     ])
-    const lista = ((m.data ?? []) as Msg[]).reverse()
+    const m = m0.error ? await consulta('id,rol,contenido,creado_en,media_path,wa_id') : m0 // por si la migración 0040 aún no se corrió
+    const lista = ((m.data ?? []) as unknown as Msg[]).reverse()
     // Marca como leído solo cuando hay un mensaje nuevo (evita un ciclo de actualizaciones)
     const ult = lista[lista.length - 1]?.id
     if (ult && ult !== visto.current && !document.hidden) { visto.current = ult; marcarLeido() }
@@ -84,7 +87,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
     }
   }, [telefono])
 
-  useEffect(() => { visto.current = ''; setMsgs([]); setAvisos([]); setConv(null); setTexto(''); setVerPedidos(false); cargar() }, [telefono]) // eslint-disable-line
+  useEffect(() => { visto.current = ''; setMsgs([]); setAvisos([]); setConv(null); setTexto(''); setCitando(null); setVerPedidos(false); cargar() }, [telefono]) // eslint-disable-line
   useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 60000); return () => clearInterval(t) }, [])
   // Tiempo real: mensajes nuevos, avisos y estado del chat de este cliente, sin recargar
   useEnVivo(`chat-${telefono}`, [{ tabla: 'mensajes', filtro: `telefono=eq.${telefono}` }, { tabla: 'notificaciones', filtro: `telefono=eq.${telefono}` }, { tabla: 'conversaciones', filtro: `telefono=eq.${telefono}` }],
@@ -116,9 +119,9 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
     const ruta = `salientes/${telefono}/${Date.now()}.mp3`
     const { error: eu } = await supabase.storage.from('comprobantes').upload(ruta, audio.blob, { contentType: 'audio/mpeg' })
     if (eu) { toast(`No se pudo subir el audio: ${eu.message}`, 'err'); return false }
-    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, audio_path: ruta } })
+    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, audio_path: ruta, responder_a: citando?.wa_id } })
     if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo enviar el audio', 'err'); return false }
-    setAudio(null); cargar()
+    setAudio(null); setCitando(null); cargar()
   }
   const enviar = async () => {
     const t = texto.trim()
@@ -129,9 +132,9 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
       const { error: eu } = await supabase.storage.from('comprobantes').upload(imagen_path, foto.blob, { contentType: 'image/jpeg' })
       if (eu) { toast(`No se pudo subir la foto: ${eu.message}`, 'err'); return false }
     }
-    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, texto: t, imagen_path } })
+    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, texto: t, imagen_path, responder_a: citando?.wa_id } })
     if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo enviar', 'err'); return false }
-    setTexto(''); setFoto(null); if (area.current) area.current.style.height = 'auto'; area.current?.focus(); cargar()
+    setTexto(''); setFoto(null); setCitando(null); if (area.current) area.current.style.height = 'auto'; area.current?.focus(); cargar()
   }
   const tomar = async (v: boolean) => {
     const { error } = await supabase.from('conversaciones').upsert({ telefono, humano: v, humano_desde: v ? new Date().toISOString() : null }, { onConflict: 'telefono' })
@@ -188,6 +191,8 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
               <div className={`fila-msg ${m.rol === 'user' ? 'izq' : 'der'}`}>
               <div className={`burbuja ${clase} ${nota ? 'nota' : ''}`}>
                 {m.rol !== 'user' && <span className="quien">{m.rol === 'admin' ? 'Equipo' : '🤖 Bot'}</span>}
+                {m.cita && <div className="cita-msg">{m.cita}</div>}
+                {m.wa_id && abierta && <button className="responder-btn" aria-label="Responder a este mensaje" title="Responder" onClick={() => { setCitando(m); area.current?.focus() }}>↩</button>}
                 {m.media_path && urls[m.media_path] && (/\.(mp3|ogg|m4a|webm|aac)$/i.test(m.media_path)
                   ? <audio className="chat-audio" controls src={urls[m.media_path]} />
                   : <a href={urls[m.media_path]} target="_blank"><img className="chat-img" src={urls[m.media_path]} alt="imagen del cliente" /></a>)}
@@ -204,6 +209,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         {abierta ? (
           <>
             <div className="rapidas">{RAPIDAS.map((r) => <button key={r} className="chip" onClick={() => { setTexto((t) => (t ? t + ' ' : '') + r); area.current?.focus() }}>{r}</button>)}</div>
+            {citando && <div className="citando"><div><b>{citando.rol === 'user' ? 'Cliente' : citando.rol === 'admin' ? 'Equipo' : 'Bot'}</b><span>{citando.contenido.replace(/^\[.*?\]\s*/, '').slice(0, 140) || '📎 Archivo'}</span></div><button className="ghost" onClick={() => setCitando(null)} aria-label="Quitar cita">✕</button></div>}
             {foto && <div className="foto-prev"><img src={foto.url} alt="Vista previa" /><button className="ghost" onClick={() => setFoto(null)} aria-label="Quitar foto">✕</button><span className="muted">El texto se envía como pie de la foto</span></div>}
             {audio && <div className="foto-prev"><audio controls src={audio.url} style={{ flex: 1, minWidth: 0 }} /><button className="ghost" onClick={() => setAudio(null)} aria-label="Descartar audio">✕</button><AsyncButton className="enviar" okText="" onClick={enviarAudio}>➤</AsyncButton></div>}
             <div className="compositor">

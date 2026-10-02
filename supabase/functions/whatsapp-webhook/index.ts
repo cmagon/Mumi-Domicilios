@@ -5,6 +5,7 @@ import { registrarAlerta } from './alerts.ts'
 import { memoriaCliente } from './memoria.ts'
 import { humanoTardo } from './humano.ts'
 import { sinNumeroPedido, franjasHabladas } from './texto.ts'
+import { pushAdmin } from './push.ts'
 import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { mediaAdmin } from './adminmedia.ts'
 import { asistenteAdmin } from './adminpedido.ts'
@@ -147,6 +148,7 @@ async function manejar(msg: any, nombreWA?: string) {
     if (citado) texto = `[El cliente responde a ${citado.rol === 'assistant' ? 'este mensaje tuyo' : 'este mensaje suyo'}: «${String(citado.contenido).slice(0, 240)}»] ${texto}`
   }
   await sb.from('mensajes').update({ contenido: texto, ...(comprobantePath ? { media_path: comprobantePath } : {}) }).eq('wa_id', msg.id)
+  await pushAdmin(sb, `💬 ${nombreWA || from}`, texto.replace(/^\[[^\]]*\]\s*/, ''), { tag: `chat-${from}`, url: '/chats' }) // notificación al celular/PC del admin (segundo plano)
   // El cliente respondió: se cancela cualquier seguimiento pendiente
   await sb.from('conversaciones').upsert({ telefono: from, esperando: null, esperando_desde: null, seguimientos: 0, ultimo_cliente_en: new Date().toISOString() }, { onConflict: 'telefono' })
   // El nombre del perfil va aparte: si la columna aún no existe, no afecta lo demás
@@ -227,7 +229,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
   let { data: aprendTodas, error: errA } = await sb.from('bot_aprendizajes').select('regla,vigente_hasta').eq('estado', 'activa').order('creado_en').limit(40)
   if (errA) ({ data: aprendTodas } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(40)) // migración 0035 pendiente
   const aprend = (aprendTodas ?? []).filter((x: any) => !x.vigente_hasta || x.vigente_hasta >= hoy) // las que vencieron dejan de aplicarse
-  const aprendizajes = (aprend ?? []).length ? `\n\n[Aprendizajes aprobados por el equipo — aplícalos siempre]\n${(aprend ?? []).map((x: any) => '- ' + x.regla).join('\n')}` : ''
+  const aprendizajes = (aprend ?? []).length ? `\n\n[Aprendizajes aprobados por el equipo — aplícalos siempre con CUALQUIER cliente (son globales, no de un cliente); si implican cifras, no las des: avisa al equipo]\n${(aprend ?? []).map((x: any) => '- ' + x.regla).join('\n')}` : ''
   const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}.${calEspecial}${(cfg.barrios_sin_domicilio ?? '').trim() ? ` NO hacemos domicilio en: ${cfg.barrios_sin_domicilio}.` : ''} Franjas de entrega: ${franjasHabladas(cfg.franjas_entrega ?? '')}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +

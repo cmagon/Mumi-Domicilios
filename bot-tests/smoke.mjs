@@ -10,7 +10,7 @@ import { DATA, calls } from './fake-supabase.mjs'
 const aqui = path.dirname(fileURLToPath(import.meta.url))
 const out = path.join(aqui, '.out.mjs')
 await build({ entryPoints: [path.join(aqui, '../supabase/functions/whatsapp-webhook/index.ts')], bundle: true, format: 'esm', platform: 'node', outfile: out,
-  alias: { 'npm:@supabase/supabase-js@2': path.join(aqui, 'fake-supabase.mjs') }, logLevel: 'error' })
+  alias: { 'npm:@supabase/supabase-js@2': path.join(aqui, 'fake-supabase.mjs'), 'npm:web-push@3.6.7': path.join(aqui, 'fake-webpush.mjs') }, logLevel: 'error' })
 
 const env = { SUPABASE_URL: 'http://x', SUPABASE_SERVICE_ROLE_KEY: 'k', WHATSAPP_APP_SECRET: 'sec', WHATSAPP_TOKEN: 't', WHATSAPP_PHONE_ID: '1', WHATSAPP_VERIFY_TOKEN: 'v' }
 let handler; const tareas = []; const enviados = []

@@ -19,7 +19,13 @@ Deno.serve(async (req) => {
   const { data: perfil } = await sb.from('perfiles').select('rol').eq('user_id', u.user.id).maybeSingle()
   if (perfil?.rol !== 'admin') return json({ ok: false, error: 'Sin permiso' }, 403)
 
-  const { telefono, texto, imagen_path, audio_path } = await req.json().catch(() => ({}))
+  const { telefono, texto, imagen_path, audio_path, responder_a } = await req.json().catch(() => ({}))
+  // Cita (reply) de WhatsApp: solo se acepta un mensaje de este mismo chat
+  let replyTo: string | null = null, cita: string | null = null
+  if (responder_a) {
+    const { data: q } = await sb.from('mensajes').select('wa_id,contenido').eq('telefono', telefono).eq('wa_id', String(responder_a)).maybeSingle()
+    if (q?.wa_id) { replyTo = q.wa_id; cita = String(q.contenido).slice(0, 200) }
+  }
   const aud = audio_path ? String(audio_path) : ''
   const msg = String(texto ?? '').trim()
   const img = imagen_path ? String(imagen_path) : ''
@@ -38,7 +44,7 @@ Deno.serve(async (req) => {
   if (aud) {
     const { data: firmada } = await sb.storage.from('comprobantes').createSignedUrl(aud, 600)
     if (!firmada?.signedUrl) return json({ ok: false, error: 'No se encontró el audio subido' })
-    waId = await sendAudio(telefono, firmada.signedUrl)
+    waId = await sendAudio(telefono, firmada.signedUrl, replyTo)
     // Transcripción para el historial y para que el bot aprenda de lo que dice el equipo (si falla, el audio igual se envió)
     try {
       const { data: c } = await sb.from('config').select('clave,valor')
@@ -51,11 +57,13 @@ Deno.serve(async (req) => {
   } else if (img) {
     const { data: firmada } = await sb.storage.from('comprobantes').createSignedUrl(img, 600)
     if (!firmada?.signedUrl) return json({ ok: false, error: 'No se encontró la imagen subida' })
-    waId = await sendImage(telefono, firmada.signedUrl, msg || undefined)
-  } else waId = await sendText(telefono, msg)
+    waId = await sendImage(telefono, firmada.signedUrl, msg || undefined, replyTo)
+  } else waId = await sendText(telefono, msg, replyTo)
   if (!waId) return json({ ok: false, error: 'WhatsApp no aceptó el mensaje. Revisa el token en los secrets o los registros de la función.' })
   const ahora = new Date().toISOString()
-  await sb.from('mensajes').insert({ telefono, rol: 'admin', contenido: aud ? `🎤 Nota de voz del equipo${transcripcion ? ': ' + transcripcion : ''}` : (msg || '📷 Foto'), wa_id: waId, ...(aud ? { media_path: aud } : img ? { media_path: img } : {}) })
+  const fila = { telefono, rol: 'admin', contenido: aud ? `🎤 Nota de voz del equipo${transcripcion ? ': ' + transcripcion : ''}` : (msg || '📷 Foto'), wa_id: waId, ...(aud ? { media_path: aud } : img ? { media_path: img } : {}) }
+  const { error: ei } = await sb.from('mensajes').insert({ ...fila, cita })
+  if (ei) await sb.from('mensajes').insert(fila) // por si la migración 0040 aún no se corrió
   // La persona toma el chat: el bot se calla (y se reactiva solo pasadas "horas_humano" h sin que escribas)
   await sb.from('conversaciones').upsert({ telefono, humano: true, humano_desde: ahora, admin_leido_en: ahora }, { onConflict: 'telefono' })
   return json({ ok: true })

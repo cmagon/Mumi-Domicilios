@@ -39,7 +39,7 @@ export async function analizarSesiones(sb: SupabaseClient, cfg: Record<string, s
 
 const SISTEMA_APRENDER = `Eres el coach del bot de ventas de Mumi (galletas por WhatsApp). Lee la conversación entre el Cliente, el Bot y el Equipo y detecta fricciones atribuibles al BOT: repetir información o preguntas, responder varias veces a mensajes seguidos, contradecirse (decir que hay galletas y luego que no), insistir en algo que el cliente ya resolvió, ignorar lo que dijo el cliente, pedir datos ya dados, mensajes confusos o no entender jerga y errores de escritura.
 Responde SOLO un JSON: {"calidad":1-5,"fricciones":["..."],"reglas":["..."]}
-"reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. NUNCA incluyas datos personales, nombres, teléfonos ni precios. No repitas reglas que ya existen (te las paso). Si no hubo fricción: calidad 5 y listas vacías.`
+"reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. El aprendizaje es GLOBAL (no por cliente): generaliza. NUNCA incluyas datos personales, nombres, teléfonos ni precios o cifras exactas. No repitas reglas que ya existen (te las paso). Si no hubo fricción: calidad 5 y listas vacías.`
 
 // Con "aprendizaje automático" activado, las sugerencias nuevas se activan solas; si no, quedan por aprobar
 const estadoNuevo = (cfg: Record<string, string>) => cfg.aprendizaje_auto === 'si' ? { estado: 'activa', decidido_en: new Date().toISOString() } : { estado: 'pendiente' }
@@ -102,7 +102,7 @@ export async function extraerPedido(sb: SupabaseClient, cfg: Record<string, stri
 const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repostería por WhatsApp). Lee una conversación donde una PERSONA del equipo ("Equipo") respondió al cliente (a veces tomó el chat que llevaba el bot). Extrae lo que el BOT debería aprender de la persona. Responde SOLO un JSON: {"reglas":[{"tipo":"estilo"|"conocimiento"|"politica","texto":"..."}]}
 - "estilo": cómo habla la persona (tono, saludos, muletillas, nivel de formalidad, uso de emojis, longitud) → instrucción en imperativo para imitarla, con un ejemplo corto entre comillas si ayuda.
 - "conocimiento": datos concretos que la persona dio y que el bot no sabía (ingredientes, ubicación, tiempos, cómo se hace algo) → "Si preguntan X, responde: …". No incluyas precios si pueden cambiar, ni datos personales.
-- "politica": decisiones o excepciones del equipo (qué hace ante una queja, un cambio, un pedido especial).
+- "politica": decisiones o excepciones del equipo (qué hace ante una queja, un cambio, un pedido especial, p. ej. "se puede conceder descuento por compras grandes"). El aprendizaje es GLOBAL: lo acordado con un cliente aplica a otros que pregunten lo mismo; redáctalo como criterio general SIN cantidades, porcentajes ni precios exactos (di "se puede estudiar un descuento" y que el equipo confirma la cifra).
 Reglas: máx. 4 elementos, cada texto de máx. 240 caracteres, generales (sirven para otros clientes), sin nombres ni teléfonos. No repitas las reglas existentes (te las paso). Si no hay nada útil: {"reglas":[]}.`
 
 // Aprende de cómo y qué responde el equipo (humano): estilo, conocimiento y políticas. Quedan como reglas "pendientes" para aprobar.

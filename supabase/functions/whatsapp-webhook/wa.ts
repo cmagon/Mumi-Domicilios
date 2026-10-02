@@ -17,9 +17,10 @@ async function post(body: unknown): Promise<string | null> {
 export const marcarLeido = (messageId: string) =>
   post({ status: 'read', message_id: messageId, typing_indicator: { type: 'text' } }).catch(() => {})
 
-export const sendText = (to: string, body: string) => post({ to, type: 'text', text: { body } })
-export const sendImage = (to: string, link: string, caption?: string) => post({ to, type: 'image', image: { link, caption } })
-export const sendAudio = (to: string, link: string) => post({ to, type: 'audio', audio: { link } })
+const ctxt = (r?: string | null) => (r ? { context: { message_id: r } } : {})
+export const sendText = (to: string, body: string, replyTo?: string | null) => post({ to, type: 'text', text: { body }, ...ctxt(replyTo) })
+export const sendImage = (to: string, link: string, caption?: string, replyTo?: string | null) => post({ to, type: 'image', image: { link, caption }, ...ctxt(replyTo) })
+export const sendAudio = (to: string, link: string, replyTo?: string | null) => post({ to, type: 'audio', audio: { link }, ...ctxt(replyTo) })
 export const sendVideo = (to: string, link: string, caption?: string) => post({ to, type: 'video', video: { link, caption } })
 export const sendLocation = (to: string, latitude: number, longitude: number, name?: string, address?: string) => post({ to, type: 'location', location: { latitude, longitude, name, address } })
 export const sendButtons = (to: string, body: string, buttons: { id: string; title: string }[]) =>

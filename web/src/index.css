@@ -350,3 +350,13 @@ header.top .salir:hover:not(:disabled) { background: #fff; color: var(--p); bord
 
 .grabando { display: flex; align-items: center; gap: 8px; flex: 1; font-variant-numeric: tabular-nums; } .rec-punto { width: 10px; height: 10px; border-radius: 50%; background: #d32f2f; animation: parpadeo 1s infinite; } @keyframes parpadeo { 50% { opacity: .2 } }
 .chat-audio { width: 220px; max-width: 100%; height: 36px; display: block; margin-bottom: 4px; }
+
+/* Responder citando un mensaje (tipo WhatsApp) */
+.burbuja { position: relative; }
+.cita-msg { border-left: 3px solid var(--rojo, #6e140d); background: rgba(0, 0, 0, .06); border-radius: 6px; padding: 3px 7px; margin-bottom: 4px; font-size: 12px; color: var(--mut); max-height: 3.6em; overflow: hidden; }
+.responder-btn { position: absolute; top: 2px; right: 2px; opacity: 0; border: 0; background: rgba(255, 255, 255, .85); border-radius: 50%; width: 24px; height: 24px; line-height: 1; padding: 0; cursor: pointer; font-size: 14px; color: var(--mut); transition: opacity .15s; }
+.burbuja:hover .responder-btn, .responder-btn:focus { opacity: 1; }
+@media (hover: none) { .responder-btn { opacity: .7; } }
+.citando { display: flex; align-items: center; gap: 8px; border-left: 4px solid var(--rojo, #6e140d); background: #f0f0f0; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+.citando > div { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; }
+.citando span { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
