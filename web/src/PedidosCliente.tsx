@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { cop } from './hooks'
 import type { Pedido } from './types'
-import { PASOS, esEfectivo, estadoDePaso, fechaCorta, horaBonita, pasoDe } from './pedidoFlow'
+import { PASOS, esEfectivo, estadoDePaso, fechaCorta, franjaTxt, horaBonita, pasoDe } from './pedidoFlow'
 import { AsyncButton, Confirmar, Switch, useToast } from './ui'
 import { avisarCliente, EVENTO_PASO } from './avisarCliente'
 import type { ComponentProps } from 'react'
@@ -62,7 +62,7 @@ export default function PedidosCliente({ telefono, onCuenta }: { telefono: strin
           <div className={`pc-card ${cancelado ? 'cancelado' : ''}`} key={o.id}>
             <div className="pc-cab"><b>#{o.numero}</b><span className="mini-badge">{cancelado ? 'Cancelado' : PASOS[paso].label}</span>
               {o.pendiente_produccion && <span className="mini-badge aviso">🍪 Por producir</span>}
-              <span className="muted pc-fecha">{fechaCorta(o.fecha_entrega)}{o.hora_entrega_solicitada ? ` · ${horaBonita(o.hora_entrega_solicitada)}` : o.franja_horaria ? ` · ${o.franja_horaria}` : ''}</span></div>
+              <span className="muted pc-fecha">{fechaCorta(o.fecha_entrega)}{o.hora_entrega_solicitada ? ` · ${horaBonita(o.hora_entrega_solicitada)}` : o.franja_horaria ? ` · ${franjaTxt(o.franja_horaria)}` : ''}</span></div>
             <div className="pc-pasos">{PASOS.map((p, i) => <span key={p.id} className={i <= paso && !cancelado ? 'hecho' : ''} />)}</div>
             <div>{(o.pedido_items ?? []).map((i) => `${i.cantidad} × ${i.productos?.nombre}`).join(' · ')}</div>
             <div className="muted">{cop(o.total)} · {o.metodo_pago ?? 'sin método'} · {o.pagado ? '✅ pagado' : esEfectivo(o) ? 'cobrar al entregar' : '⏳ sin pagar'} · {o.modalidad === 'domicilio' ? <>🛵 {o.direccion ?? ''}{o.lat != null && <> · <a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank">Ver mapa</a></>}</> : 'Recoge en tienda'}</div>

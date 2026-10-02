@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
 import AprendizajeBot from '../AprendizajeBot'
 import AvisosBot from '../AvisosBot'
+import { FranjasEditor } from '../Franjas'
 import MapaPin from '../MapaPin'
 import { sonidoActivo, setSonidoActivo, tono } from '../sonido'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
@@ -200,7 +201,7 @@ export default function Configuracion() {
         {sec === 'oper' && (<>
 <div>
         <label>Días de producción (ej. miercoles,viernes)</label><input value={f.dias_produccion ?? ''} onChange={(e) => set('dias_produccion', e.target.value)} />
-        <label>Franjas horarias de entrega (separadas por coma)</label><input value={f.franjas_entrega ?? ''} onChange={(e) => set('franjas_entrega', e.target.value)} />
+        <label>Franjas horarias de entrega</label><FranjasEditor valor={f.franjas_entrega ?? ''} onChange={(v) => set('franjas_entrega', v)} />
         <label>Pedidos para el mismo día: minutos de anticipación antes del cierre de entregas (por defecto 60)</label>
         <input type="number" min={0} value={f.anticipacion_minima_min ?? '60'} onChange={(e) => set('anticipacion_minima_min', e.target.value)} />
         <Switch checked={(f.permitir_reserva_sin_stock ?? 'si') !== 'no'} onChange={(v) => set('permitir_reserva_sin_stock', v ? 'si' : 'no')} label="Si no hay stock, dejar el pedido reservado para la siguiente producción (y avisarme)" />

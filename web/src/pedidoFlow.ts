@@ -53,6 +53,11 @@ export function horaBonita(h?: string | null): string {
   const [hh, mm] = h.split(':').map(Number)
   return `${hh % 12 || 12}:${String(mm).padStart(2, '0')} ${hh >= 12 ? 'p. m.' : 'a. m.'}`
 }
+// "15:00-17:30" → "3:00 p. m. a 5:30 p. m."
+export function franjaTxt(f: string): string {
+  const m = f.trim().match(/^(\d{1,2}):?(\d{2})?\s*-\s*(\d{1,2}):?(\d{2})?$/)
+  return m ? `${horaBonita(`${m[1]}:${m[2] ?? '00'}`)} a ${horaBonita(`${m[3]}:${m[4] ?? '00'}`)}` : f
+}
 const minutos = (h?: string | null) => { if (!h) return null; const [a, b] = h.split(':').map(Number); return a * 60 + (b || 0) }
 const inicioFranja = (fr?: string | null) => { const m = fr?.match(/(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null }
 
@@ -60,7 +65,7 @@ const inicioFranja = (fr?: string | null) => { const m = fr?.match(/(\d{1,2}):(\
 export function minutoEntrega(o: Pedido): number { return minutos(o.hora_entrega_solicitada) ?? inicioFranja(o.franja_horaria) ?? 24 * 60 }
 export function claveHora(o: Pedido): { clave: string; etiqueta: string } {
   if (o.hora_entrega_solicitada) return { clave: 'H' + o.hora_entrega_solicitada.slice(0, 5), etiqueta: `🕒 ${horaBonita(o.hora_entrega_solicitada)} · hora pedida por el cliente` }
-  if (o.franja_horaria) return { clave: 'F' + o.franja_horaria, etiqueta: `Franja ${o.franja_horaria}` }
+  if (o.franja_horaria) return { clave: 'F' + o.franja_horaria, etiqueta: `Franja ${franjaTxt(o.franja_horaria)}` }
   return { clave: 'S', etiqueta: 'Sin hora definida' }
 }
 export function esUrgente(o: Pedido): boolean {

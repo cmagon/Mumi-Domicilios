@@ -6,6 +6,7 @@ import { imprimirTickets } from '../ticket'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 import ChatModal from '../ChatModal'
 import HoraPicker from '../HoraPicker'
+import { FranjaSelect } from '../Franjas'
 import { avisarCliente, EVENTO_PASO, type EventoCliente } from '../avisarCliente'
 import { SelectorFecha } from '../Calendario'
 import { PASOS, claveHora, esEfectivo, esUrgente, estadoDePaso, etiquetaFecha, fechaCorta, horaBonita, minutoEntrega, pasoDe } from '../pedidoFlow'
@@ -298,7 +299,7 @@ function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar,
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => setF({ ...f, fecha: v })} /></div>
         <div><label>Hora pedida por el cliente</label><HoraPicker valor={f.hora} onChange={(v) => setF({ ...f, hora: v })} placeholder="Sin hora" /></div>
       </div>
-      <label>Franja horaria</label><input placeholder="ej. 14:00-16:00" value={f.franja} onChange={(e) => setF({ ...f, franja: e.target.value })} />
+      <label>Franja horaria</label><FranjaSelect valor={f.franja} onChange={(v) => setF({ ...f, franja: v })} />
       <label>Dirección{o.direccion_aprox ? ' (aproximada, por ubicación compartida)' : ''}</label>
       <input value={f.direccion} onChange={(e) => setF({ ...f, direccion: e.target.value })} />
       {o.lat != null && <p><a href={`https://www.google.com/maps?q=${o.lat},${o.lng}`} target="_blank">📍 Ver ubicación en el mapa</a></p>}
