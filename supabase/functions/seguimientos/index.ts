@@ -32,6 +32,9 @@ Deno.serve(async (req) => {
   }
   // 1b) Resúmenes al administrador (6 p. m. y antes de que se cierre su ventana de 24 h)
   await resumenAdmin(sb, cfg).catch((e) => console.error('resumenAdmin', e))
+  // 1c) Avisos conversacionales viejos (más de 48 h) que nadie cerró: se ocultan solos
+  await sb.from('notificaciones').update({ leida: true }).eq('leida', false).in('tipo', ['atencion', 'sin_respuesta', 'pedido_grande', 'sin_stock'])
+    .lt('creado_en', new Date(Date.now() - 48 * 3600 * 1000).toISOString()).not('titulo', 'like', 'Falta la dirección%')
   // 2) Aprovecha la ejecución del cron para analizar y aprender de unas pocas conversaciones (solo unas veces por hora, aunque el cron corra cada minuto)
   if (new Date().getMinutes() % 10 < 2) {
     await analizarSesiones(sb, cfg, 3).catch(() => 0)
