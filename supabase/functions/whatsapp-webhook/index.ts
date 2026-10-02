@@ -10,6 +10,7 @@ import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { mediaAdmin } from './adminmedia.ts'
 import { asistenteAdmin } from './adminpedido.ts'
 import { conversarEquipo } from './equipo.ts'
+import { avisoAdminWA } from './adminresumen.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, ventanaEntregas, type Ctx } from './tools.ts'
@@ -160,6 +161,7 @@ async function manejar(msg: any, nombreWA?: string) {
           detalle: `El cliente envió una imagen y el pedido tiene el pago pendiente ($${p.total} por ${p.metodo_pago ?? 'transferencia'}). Verifica el soporte y confirma el pago.${sinPagar.length > 1 ? ` También tiene pendientes: ${sinPagar.slice(1).map((x: any) => '#' + x.numero).join(', ')}.` : ''}` }
         const { error: ea } = await sb.from('notificaciones').insert({ ...aviso, media_path: comprobantePath })
         if (ea) await sb.from('notificaciones').insert(aviso) // por si la migración 0025 aún no se corrió
+        await avisoAdminWA(sb, aviso.titulo, aviso.detalle, from)
         texto += ` [Sistema: el cliente tiene el pedido #${p.numero} con el pago pendiente. La imagen ya se adjuntó al pedido y se avisó al equipo para que verifique el pago. Agradécele, dile que recibiste el comprobante y que el equipo lo verifica y le confirma. NO marques el pedido como pagado ni pidas más datos de pago.]`
       }
     } else if (msg.type === 'location') {
