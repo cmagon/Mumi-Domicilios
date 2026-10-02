@@ -96,7 +96,7 @@ export default function Campanas() {
           <input type="file" accept="image/*" onChange={(e) => elegirFoto(e.target.files?.[0])} />
           <label>Texto * ({ed.texto.length}/1024)</label>
           <textarea style={{ minHeight: 110 }} maxLength={1024} value={ed.texto} onChange={(e) => setEd({ ...ed, texto: e.target.value })} placeholder="Escribe el mensaje que verá el cliente" />
-          <div className="grid2">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div><label>Botón 1 (máx. 20 letras)</label><input maxLength={20} value={ed.boton1} onChange={(e) => setEd({ ...ed, boton1: e.target.value })} placeholder="Ej. Quiero pedir" /></div>
             <div><label>Botón 2 (opcional)</label><input maxLength={20} value={ed.boton2} onChange={(e) => setEd({ ...ed, boton2: e.target.value })} placeholder="Ej. Ver sabores" /></div>
           </div>
