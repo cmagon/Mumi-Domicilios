@@ -144,6 +144,20 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const leerAviso = async (id: string) => { await supabase.from('notificaciones').update({ leida: true }).eq('id', id); cargar() }
   const leerTodos = async () => { await supabase.from('notificaciones').update({ leida: true }).in('id', avisos.map((a) => a.id)); cargar() }
 
+  // Deslizar un mensaje hacia la derecha para citarlo (como en WhatsApp)
+  const gesto = useRef<{ x: number; y: number; m: Msg } | null>(null)
+  const alTocar = (e: React.TouchEvent, m: Msg) => { gesto.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, m } }
+  const alMover = (e: React.TouchEvent) => {
+    const g = gesto.current; if (!g) return
+    const dx = e.touches[0].clientX - g.x, dy = Math.abs(e.touches[0].clientY - g.y)
+    if (dy > 30) { gesto.current = null; (e.currentTarget as HTMLElement).style.transform = ''; return }
+    if (dx > 0) (e.currentTarget as HTMLElement).style.transform = `translateX(${Math.min(dx, 70)}px)`
+  }
+  const alSoltar = (e: React.TouchEvent) => {
+    const g = gesto.current; gesto.current = null
+    const el = e.currentTarget as HTMLElement; const dx = (e.changedTouches[0]?.clientX ?? 0) - (g?.x ?? 0); el.style.transform = ''
+    if (g && dx > 60 && g.m.wa_id && abierta) { setCitando(g.m); area.current?.focus(); try { navigator.vibrate?.(15) } catch { /* no soportado */ } }
+  }
   let diaPrev = ''
   return (
     <div className="chatview">
@@ -188,7 +202,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
           return (
             <div key={m.id}>
               {sep && <div className="chat-dia">{dia}</div>}
-              <div className={`fila-msg ${m.rol === 'user' ? 'izq' : 'der'}`}>
+              <div className={`fila-msg ${m.rol === 'user' ? 'izq' : 'der'}`} onTouchStart={(e) => alTocar(e, m)} onTouchMove={alMover} onTouchEnd={alSoltar} onDoubleClick={() => { if (m.wa_id && abierta) { setCitando(m); area.current?.focus() } }}>
               <div className={`burbuja ${clase} ${nota ? 'nota' : ''}`}>
                 {m.rol !== 'user' && <span className="quien">{m.rol === 'admin' ? 'Equipo' : '🤖 Bot'}</span>}
                 {m.cita && <div className="cita-msg">{m.cita}</div>}
