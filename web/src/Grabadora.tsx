@@ -40,6 +40,6 @@ export default function Grabadora({ onListo, onError }: { onListo: (mp3: Blob, u
   const cancelar = () => { window.clearInterval(t.current); setGrabando(false); if (rec.current) { rec.current.onstop = () => rec.current?.stream.getTracks().forEach((x) => x.stop()); if (rec.current.state === 'recording') rec.current.stop() } }
 
   return grabando
-    ? <div className="grabando"><button className="sec adjuntar" onClick={cancelar} aria-label="Cancelar">✕</button><span className="rec-punto" /> {Math.floor(seg / 60)}:{String(seg % 60).padStart(2, '0')}<button className="adjuntar" onClick={detener} aria-label="Terminar">■</button></div>
+    ? <div className="grabando"><button className="sec adjuntar" onClick={cancelar} aria-label="Cancelar">✕</button><span className="rec-punto" /> {Math.floor(seg / 60)}:{String(seg % 60).padStart(2, '0')}<button className="adjuntar" onClick={detener} aria-label="Enviar nota de voz" title="Enviar">➤</button></div>
     : <button className="sec adjuntar" onClick={iniciar} aria-label="Grabar nota de voz" title="Grabar nota de voz">🎤</button>
 }
