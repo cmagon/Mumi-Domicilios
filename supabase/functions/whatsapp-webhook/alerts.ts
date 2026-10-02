@@ -1,4 +1,5 @@
 // Alertas de fallos de IA: se guardan en `alertas_ia` (banner en el micrositio) y se avisan por WhatsApp y correo (opcional).
+import { notificarAdmins } from './notifequipo.ts'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { sendText } from './wa.ts'
 
@@ -30,7 +31,7 @@ export async function registrarAlerta(sb: SupabaseClient, cfg: Record<string, st
     if (!notificar) return
     const msg = `⚠️ Bot Mumi: ${TITULO[tipo]}.\n${texto.slice(0, 200)}\nRevisa Configuración → "Probar IA" en el micrositio.`
     // WhatsApp (solo llega si el admin escribió al bot en las últimas 24 h)
-    for (const n of (cfg.admin_numeros ?? '').split(',').map((s) => s.replace(/\D/g, '')).filter(Boolean)) await sendText(n, msg)
+    await notificarAdmins(sb, cfg, msg) // principal primero; si no se le puede escribir, el secundario
     // Correo opcional (Resend): secrets RESEND_API_KEY y ALERT_EMAIL_TO
     const key = Deno.env.get('RESEND_API_KEY'), to = Deno.env.get('ALERT_EMAIL_TO')
     if (key && to) {

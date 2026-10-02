@@ -2,6 +2,7 @@
 // (a las 6 p. m. y antes de que se cierre la ventana de 24 h de WhatsApp, para mantener la conversación con el admin siempre abierta).
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { sendText } from './wa.ts'
+import { notificarAdmins } from './notifequipo.ts'
 import { fechaBogota } from './tools.ts'
 
 const fmt$ = (n: number) => '$' + Number(n).toLocaleString('es-CO')
@@ -95,13 +96,8 @@ export async function avisoAdminWA(sb: SupabaseClient, titulo: string, detalle?:
     const { data: c } = await sb.from('config').select('clave,valor').in('clave', ['admin_numeros', 'avisos_whatsapp_admin'])
     const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
     if (cfg.avisos_whatsapp_admin === 'no') return
-    const admins = (cfg.admin_numeros ?? '').split(',').map((x) => x.replace(/\D/g, '')).filter(Boolean)
-    for (const tel of admins) {
-      if (tel === chat) continue
-      const { data: ult } = await sb.from('mensajes').select('creado_en').eq('telefono', tel).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
-      if (!ult || Date.now() - new Date(ult.creado_en).getTime() > 23.5 * 3600 * 1000) continue // ventana cerrada
-      await sendText(tel, `🔔 ${titulo}${detalle ? `\n${String(detalle).slice(0, 400)}` : ''}${chat ? `\n💬 Chat del cliente: ${chat}` : ''}\n\nLo ves también en el micrositio.`)
-    }
+    // En orden: primero el número principal; si su ventana está cerrada, el secundario
+    await notificarAdmins(sb, cfg, `🔔 ${titulo}${detalle ? `\n${String(detalle).slice(0, 400)}` : ''}${chat ? `\n💬 Chat del cliente: ${chat}` : ''}\n\nLo ves también en el micrositio.`, { excluir: chat })
   } catch (e) { console.error('avisoAdminWA', e) }
 }
 

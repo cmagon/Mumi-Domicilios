@@ -239,7 +239,17 @@ export default function Configuracion() {
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'equipo' && (<>
 <div>
-        <label>Números del equipo: administradores y socios (WhatsApp, separados por coma). Nunca se tratan como clientes</label><input value={f.admin_numeros ?? ''} onChange={(e) => set('admin_numeros', e.target.value)} />
+        {(() => {
+          // El orden manda: el bot notifica primero al principal y, si no puede, al secundario (se guarda como "principal,secundario,otros…")
+          const [prin = '', sec = '', ...otros] = (f.admin_numeros ?? '').split(',').map((x) => x.trim())
+          const guardarNums = (p: string, s2: string, o: string) => set('admin_numeros', [p, s2, ...o.split(',')].map((x) => x.trim()).filter(Boolean).join(','))
+          return <>
+            <label>⭐ Número principal del admin (WhatsApp, con indicativo, ej. 573001234567)</label><input value={prin} onChange={(e) => guardarNums(e.target.value, sec, otros.join(','))} />
+            <label>🥈 Número secundario (respaldo)</label><input value={sec} onChange={(e) => guardarNums(prin, e.target.value, otros.join(','))} placeholder="Opcional" />
+            <label>Otros socios (separados por coma)</label><input value={otros.join(',')} onChange={(e) => guardarNums(prin, sec, e.target.value)} placeholder="Opcional" />
+            <p className="muted">Los avisos, alertas y atenciones humanas se notifican <b>en orden</b>: primero al principal; si no se le puede escribir (pasaron más de 24 h desde que te escribió al bot o WhatsApp falla), se intenta con el secundario. Los resúmenes de las 6 p. m. y los avisos para mantener la ventana abierta van a cada número. Todos estos números <b>nunca</b> se tratan como clientes.</p>
+          </>
+        })()}
         <p className="muted">Estos números <b>nunca</b> se tratan como cliente. Puedes dictarle (texto o nota de voz) <b>"pedido para Juan, 3 de maracuyá, mañana, domicilio…"</b> y te pregunta lo que falte y pide confirmación. También puedes escribirle: <b>evento: …</b>, <b>instrucción: …</b>, <b>avisos</b>, <b>hoy: cacao 30</b>, <b>fabricadas: …</b>. Y enviarle una foto o video con el pie <b>foto: Cacao</b> (agrega al sabor) o <b>nuevo: Nombre, precio, descripción</b> (crea un sabor oculto).</p>
         <label>Si tardas más de estos minutos en responder a un cliente que atiendes tú, el bot retoma el chat (0 = nunca; por defecto 5)</label><input type="number" min={0} value={f.minutos_humano_sin_responder ?? '5'} onChange={(e) => set('minutos_humano_sin_responder', e.target.value)} />
         <label>Horas de atención humana antes de que el bot se reactive solo (por defecto 12)</label><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
