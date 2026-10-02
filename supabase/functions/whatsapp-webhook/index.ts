@@ -171,6 +171,17 @@ async function manejar(msg: any, nombreWA?: string) {
         ultima_direccion_aprox: [l.name, l.address].filter(Boolean).join(', ') || aprox }, { onConflict: 'telefono' })
       texto = `[El cliente compartió su ubicación con el pin. ${[l.name, l.address].filter(Boolean).length ? 'Lugar: ' + [l.name, l.address].filter(Boolean).join(', ') + '. ' : ''}` +
         `Dirección aproximada detectada: ${aprox ?? 'no disponible'} (lat ${l.latitude}, lng ${l.longitude}). Es solo aproximada: dile en qué zona/barrio lo ubicas y pídele una seña (casa, conjunto, apto, punto de referencia). Al crear el pedido usa ubicacion_compartida=true.]`
+    } else if (msg.type === 'interactive' || msg.type === 'button') {
+      // El cliente tocó un botón (p. ej. de una promoción): se toma como si hubiera escrito el texto del botón
+      const br = msg.interactive?.button_reply ?? msg.interactive?.list_reply
+      const titulo = String(br?.title ?? msg.button?.text ?? '').trim()
+      const bid = String(br?.id ?? msg.button?.payload ?? '')
+      texto = titulo || '[El cliente tocó un botón]'
+      const m = bid.match(/^camp:([0-9a-f-]{36}):(\d)$/)
+      if (m) {
+        texto = `[El cliente tocó el botón «${titulo}» de la promoción que le enviamos] ${titulo}`
+        await sb.from('campana_envios').update({ boton_tocado: Number(m[2]), respondio_en: new Date().toISOString() }).eq('campana_id', m[1]).eq('telefono', from)
+      }
     } else if (msg.type === 'sticker') texto = '[El cliente envió un sticker]'
     else if (msg.type === 'reaction') { await sb.from('mensajes').delete().eq('wa_id', msg.id); return } // reacciones: sin respuesta
     else { await sendText(from, 'Por ahora solo puedo leer texto, notas de voz, imágenes y ubicaciones 🙂'); return }
