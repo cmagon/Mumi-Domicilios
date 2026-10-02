@@ -4,6 +4,7 @@ import { hoy, useConfig } from '../hooks'
 import type { Producto } from '../types'
 import { AsyncButton, useToast } from '../ui'
 import HoraPicker from '../HoraPicker'
+import { FranjaSelect } from '../Franjas'
 import { SelectorFecha, useCalendario } from '../Calendario'
 
 export default function PedidoManual() {
@@ -61,7 +62,7 @@ export default function PedidoManual() {
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => set('fecha', v)} /></div>
         <div><label>Hora pedida (opcional)</label><HoraPicker valor={f.hora} onChange={(v) => set('hora', v)} placeholder="Sin hora" /></div>
       </div>
-      <label>Franja horaria</label><input placeholder="ej. 14:00-16:00" value={f.franja} onChange={(e) => set('franja', e.target.value)} />
+      <label>Franja horaria</label><FranjaSelect valor={f.franja} onChange={(v) => set('franja', v)} />
       <label>Modalidad</label><select value={f.modalidad} onChange={(e) => set('modalidad', e.target.value)}><option value="domicilio">Domicilio</option><option value="recoger">Recoger</option></select>
       {f.modalidad === 'domicilio' && <><label>Dirección *</label><input className={err.direccion ? 'invalido' : ''} value={f.direccion} onChange={(e) => set('direccion', e.target.value)} />
         <label>Tarifa domicilio</label><input type="number" value={f.tarifa} onChange={(e) => set('tarifa', e.target.value)} /></>}

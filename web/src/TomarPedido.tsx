@@ -6,6 +6,7 @@ import { AsyncButton, Modal, Switch, useToast } from './ui'
 import { SelectorFecha, useCalendario } from './Calendario'
 import { avisarCliente } from './avisarCliente'
 import HoraPicker from './HoraPicker'
+import { franjaBonita } from './Franjas'
 
 type Item = { producto_id: string; cantidad: number }
 const sin57 = (t: string) => t.replace(/\D/g, '').replace(/^57(?=\d{10}$)/, '')
@@ -111,7 +112,7 @@ export default function TomarPedido({ telefono, nombre, abierto, onClose }: { te
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => set('fecha', v)} /></div>
         <div><label>Hora pedida</label><HoraPicker valor={f.hora} onChange={(v) => set('hora', v)} placeholder="Sin hora" /></div>
       </div>
-      {franjas.length > 0 && <><label>Franja</label><select value={f.franja} onChange={(e) => set('franja', e.target.value)}><option value="">— sin franja —</option>{franjas.map((x) => <option key={x}>{x}</option>)}</select></>}
+      {franjas.length > 0 && <><label>Franja</label><select value={f.franja} onChange={(e) => set('franja', e.target.value)}><option value="">— sin franja —</option>{franjas.map((x) => <option key={x} value={x}>{franjaBonita(x)}</option>)}</select></>}
       <label>Modalidad</label><select value={f.modalidad} onChange={(e) => set('modalidad', e.target.value)}><option value="domicilio">Domicilio</option><option value="recoger">Recoger</option></select>
       {f.modalidad === 'domicilio' && <>
         <label>Dirección {geo.aprox && <span className="muted">(aproximada por la ubicación compartida)</span>}</label>
