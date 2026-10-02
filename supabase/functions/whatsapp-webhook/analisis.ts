@@ -75,7 +75,15 @@ export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string,
     try {
       const { data: msgs } = await sb.from('mensajes').select('rol,contenido').eq('telefono', s.telefono)
         .gte('creado_en', s.inicio).lte('creado_en', s.fin).order('creado_en').limit(100)
-      const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
+      // Solo el texto del Equipo y del cliente; lo que escribió el bot se reduce a una marca de contexto (no se aprende de eso)
+      const lineas: string[] = []
+      for (const m of msgs ?? []) {
+        if (m.rol === 'assistant') { if (lineas[lineas.length - 1] !== '[el bot respondió]') lineas.push('[el bot respondió]'); continue }
+        if (/^\[.*\]$/.test(String(m.contenido).trim())) continue // anotaciones del sistema
+        lineas.push(`${m.rol === 'user' ? 'Cliente' : 'Equipo'}: ${String(m.contenido).slice(0, 300)}`)
+      }
+      const texto = lineas.join('\n')
+      const textoBot = norm((msgs ?? []).filter((m) => m.rol === 'assistant').map((m) => String(m.contenido)).join(' '))
       const out = await chat(prov, SISTEMA_APRENDER, [{ role: 'user', content: `${k.contexto}\n\nConversación:\n${texto}` }], [], async () => ({}))
       const j = out.match(/\{[\s\S]*\}/)
       if (!j) continue
@@ -112,7 +120,7 @@ export async function extraerPedido(sb: SupabaseClient, cfg: Record<string, stri
   return j ? JSON.parse(j[0]) : {}
 }
 
-const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repostería por WhatsApp). Lee una conversación donde una PERSONA del equipo ("Equipo") respondió al cliente (a veces tomó el chat que llevaba el bot). Extrae lo que el BOT debería aprender de la persona. Responde SOLO un JSON: {"reglas":[{"tipo":"estilo"|"conocimiento"|"politica","texto":"...","simple":true|false}]}
+const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repostería por WhatsApp). Lee una conversación donde una PERSONA del equipo ("Equipo") respondió al cliente (a veces tomó el chat que llevaba el bot). Extrae lo que el BOT debería aprender de la persona. Aprendes ÚNICAMENTE de lo que escribió el "Equipo" (la persona humana): las líneas del bot aparecen solo como "[el bot respondió]" para dar contexto y NUNCA son fuente de reglas (no copies ni resumas lo que dijo el bot). Si el Equipo no dijo nada nuevo o útil, devuelve {"reglas":[]}. Responde SOLO un JSON: {"reglas":[{"tipo":"estilo"|"conocimiento"|"politica","texto":"...","simple":true|false}]}
 - "estilo": cómo habla la persona (tono, saludos, muletillas, nivel de formalidad, uso de emojis, longitud) → instrucción en imperativo para imitarla, con un ejemplo corto entre comillas si ayuda.
 - "conocimiento": datos concretos que la persona dio y que el bot no sabía (ingredientes, ubicación, tiempos, cómo se hace algo) → "Si preguntan X, responde: …". No incluyas precios si pueden cambiar, ni datos personales.
 - "politica": decisiones o excepciones del equipo (qué hace ante una queja, un cambio, un pedido especial, p. ej. "se puede conceder descuento por compras grandes"). El aprendizaje es GLOBAL: lo acordado con un cliente aplica a otros que pregunten lo mismo; redáctalo como criterio general SIN cantidades, porcentajes ni precios exactos (di "se puede estudiar un descuento" y que el equipo confirma la cifra).
@@ -141,6 +149,9 @@ export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, 
       if (j) for (const r of (JSON.parse(j[0]).reglas ?? []).slice(0, 3)) {
         const t = String(r.texto ?? '').trim().slice(0, 260)
         if (t.length < 15 || vistas.has(norm(t)) || parecida(t, pal)) continue
+        // Si el ejemplo entre comillas de la regla es una frase que escribió el BOT, no viene del equipo: se descarta
+        const citas = [...t.matchAll(/[«"“]([^»"”]{12,})[»"”]/g)].map((x) => norm(x[1]))
+        if (citas.some((c) => c && textoBot.includes(c))) continue
         vistas.add(norm(t)); pal.push(palabras(t)); reglas++
         await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo' + (cfg.aprendizaje_auto === 'si' || (r.simple === true && r.tipo === 'estilo') ? ' · activada automáticamente' : ''), origen_telefono: s.telefono, ...estadoNuevo(cfg, r.simple === true && r.tipo === 'estilo') })
       }
