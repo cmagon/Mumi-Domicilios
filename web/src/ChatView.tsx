@@ -42,7 +42,7 @@ function Contenido({ texto }: { texto: string }) {
 }
 
 // Conversación tipo WhatsApp: historial en vivo, avisos del chat, tomar/devolver al bot y responder como persona.
-export default function ChatView({ telefono, nombre, onBack, resumen }: { telefono: string; nombre?: string | null; onBack?: () => void; resumen?: React.ReactNode }) {
+export default function ChatView({ telefono, nombre, onBack, resumen, equipo = false }: { telefono: string; nombre?: string | null; onBack?: () => void; resumen?: React.ReactNode; equipo?: boolean }) {
   const toast = useToast()
   const { cfg } = useConfig()
   const minHumano = cfg.minutos_humano_sin_responder === '' || cfg.minutos_humano_sin_responder == null ? 5 : Number(cfg.minutos_humano_sin_responder)
@@ -176,17 +176,18 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         {onBack && <button className="ghost atras" onClick={onBack} aria-label="Volver">←</button>}
         <div className="avatar">{(nombre ?? conv?.nombre_wa ?? telefono).slice(0, 1).toUpperCase()}</div>
         <div className="chat-quien"><b>{nombre ?? conv?.nombre_wa ?? telefono}</b><span className="muted">{telefono}</span></div>
-        <AsyncButton className={humano ? '' : 'sec'} okText="" onClick={() => tomar(!humano)}>{humano ? '🤖 Devolver al bot' : '🙋 Tomar chat'}</AsyncButton>
+        {equipo ? <span className="mini-badge equipo">👥 Equipo</span> : <AsyncButton className={humano ? '' : 'sec'} okText="" onClick={() => tomar(!humano)}>{humano ? '🤖 Devolver al bot' : '🙋 Tomar chat'}</AsyncButton>}
       </div>
-      <div className={`chat-modo ${humano ? 'hum' : ''}`}>
+      {equipo && <div className="chat-modo">Conversación con el equipo: el asistente interno atiende estas órdenes por WhatsApp (nunca se trata como cliente).</div>}
+      {!equipo && <div className={`chat-modo ${humano ? 'hum' : ''}`}>
         {humano ? `Atiendes tú: el bot está en silencio${minHumano > 0 ? `, pero retoma el chat si tardas más de ${minHumano} min en responder` : ''}.` : 'El bot atiende este chat. Si respondes, tomas la conversación.'}
-      </div>
-      <div className="pestanas"><button className={!verPedidos ? 'on' : ''} onClick={() => setVerPedidos(false)}>💬 Chat</button>
-        <button className={verPedidos ? 'on' : ''} onClick={() => setVerPedidos(true)}>📋 Pedidos{nActivos > 0 && <b>{nActivos}</b>}</button></div>
-      <div className="burbujas">
+      </div>}
+      {!equipo && <div className="pestanas"><button className={!verPedidos ? 'on' : ''} onClick={() => setVerPedidos(false)}>💬 Chat</button>
+        <button className={verPedidos ? 'on' : ''} onClick={() => setVerPedidos(true)}>📋 Pedidos{nActivos > 0 && <b>{nActivos}</b>}</button></div>}
+      {!equipo && <div className="burbujas">
         {resumen}
         <button className="burbuja-ia pedido" onClick={() => setTomando(true)} aria-label="Tomar pedido" title="Tomar pedido">🛒</button>
-      </div>
+      </div>}
       <TomarPedido telefono={telefono} nombre={nombre ?? conv?.nombre_wa} abierto={tomando} onClose={() => setTomando(false)} />
       {avisos.length > 0 && (
         <div className="avisos-chat">
@@ -217,7 +218,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
               <div className={`burbuja ${clase} ${nota ? 'nota' : ''}`}>
                 {m.rol !== 'user' && <span className="quien">{m.rol === 'admin' ? 'Equipo' : '🤖 Bot'}</span>}
                 {m.cita && <div className="cita-msg">{m.cita}</div>}
-                {m.wa_id && abierta && <button className="responder-btn" aria-label="Responder a este mensaje" title="Responder" onClick={() => { setCitando(m); area.current?.focus() }}>↩</button>}
+                {m.wa_id && abierta && !equipo && <button className="responder-btn" aria-label="Responder a este mensaje" title="Responder" onClick={() => { setCitando(m); area.current?.focus() }}>↩</button>}
                 {m.media_path && urls[m.media_path] && (/\.(mp3|ogg|m4a|webm|aac)$/i.test(m.media_path)
                   ? <audio className="chat-audio" controls src={urls[m.media_path]} />
                   : <a href={urls[m.media_path]} target="_blank"><img className="chat-img" src={urls[m.media_path]} alt="imagen del cliente" /></a>)}
@@ -232,7 +233,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         <div ref={fin} />
       </div>
 
-      <div className="chat-pie" hidden={verPedidos}>
+      {!equipo && <div className="chat-pie" hidden={verPedidos}>
         {abierta ? (
           <>
             <div className="rapidas">{RAPIDAS.map((r) => <button key={r} className="chip" onClick={() => { setTexto((t) => (t ? t + ' ' : '') + r); area.current?.focus() }}>{r}</button>)}</div>
@@ -252,7 +253,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
         ) : (
           <div className="ventana-cerrada">🔒 Pasaron más de 24 h desde el último mensaje del cliente. WhatsApp solo permite plantillas aprobadas; podrás responder cuando él escriba de nuevo.</div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 // Análisis de conversaciones: para cada sesión cerrada que no terminó en venta, la IA clasifica por qué se truncó.
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { chat } from './ai.ts'
-import { construirProveedor } from './config.ts'
+import { sinEquipo, construirProveedor } from './config.ts'
 
 const SISTEMA = `Eres analista de ventas de Mumi, una marca de galletas que vende por WhatsApp. Analiza la conversación entre el cliente y el bot y responde SOLO un JSON con esta forma:
 {"resultado":"truncada|atencion_humana|sin_intencion","motivo":"precio|sin_stock|fecha_entrega|domicilio_tarifa|metodo_pago|no_respondio|duda_sin_resolver|error_bot|solo_informacion|pidio_persona|otro","etapa":"saludo|catalogo|eleccion|entrega|datos|pago","resumen":"1 o 2 frases sobre qué pasó","sugerencia":"1 frase de cómo mejorar la conversación"}
@@ -12,7 +12,7 @@ export async function analizarSesiones(sb: SupabaseClient, cfg: Record<string, s
   let q = sb.from('chat_sesiones').select('telefono,inicio,fin').eq('vendida', false).gte('mensajes_cliente', 1)
   if (foco) q = q.eq('telefono', foco.telefono).eq('inicio', foco.inicio)
   else q = q.is('resultado', null).lt('fin', new Date(Date.now() - 3 * 3600 * 1000).toISOString()).order('fin', { ascending: false }).limit(limite)
-  const { data: sesiones } = await q
+  const { data: sesiones } = await sinEquipo(q, cfg)
   if (!sesiones?.length) return 0
   const prov = await construirProveedor(sb, cfg)
   let hechas = 0
@@ -60,8 +60,8 @@ const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u
 
 // Aprendizaje continuo: revisa conversaciones cerradas (con o sin venta) y propone reglas nuevas (quedan "pendientes" hasta que el admin las active)
 export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string, string>, limite = 3): Promise<{ revisadas: number; reglas: number }> {
-  const { data: ses } = await sb.from('chat_sesiones').select('telefono,inicio,fin').gte('mensajes_cliente', 2)
-    .lt('fin', new Date(Date.now() - 3600 * 1000).toISOString()).order('fin', { ascending: false }).limit(40)
+  const { data: ses } = await sinEquipo(sb.from('chat_sesiones').select('telefono,inicio,fin').gte('mensajes_cliente', 2)
+    .lt('fin', new Date(Date.now() - 3600 * 1000).toISOString()).order('fin', { ascending: false }).limit(40), cfg)
   if (!ses?.length) return { revisadas: 0, reglas: 0 }
   const { data: hechas } = await sb.from('chats_revision').select('telefono,sesion_inicio').in('telefono', [...new Set(ses.map((x) => x.telefono))])
   const ya = new Set((hechas ?? []).map((h) => `${h.telefono}|${new Date(h.sesion_inicio).getTime()}`))
@@ -120,7 +120,7 @@ const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repost
 
 // Aprende de cómo y qué responde el equipo (humano): estilo, conocimiento y políticas. Quedan como reglas "pendientes" para aprobar.
 export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, string>, limite = 3): Promise<{ revisadas: number; reglas: number }> {
-  const { data: ses } = await sb.from('chat_sesiones').select('telefono,inicio,fin').order('fin', { ascending: false }).limit(60)
+  const { data: ses } = await sinEquipo(sb.from('chat_sesiones').select('telefono,inicio,fin').order('fin', { ascending: false }).limit(60), cfg)
   if (!ses?.length) return { revisadas: 0, reglas: 0 }
   const { data: hechas } = await sb.from('chats_revision').select('telefono,sesion_inicio,equipo_revisado_en').in('telefono', [...new Set(ses.map((x) => x.telefono))])
   const ya = new Set((hechas ?? []).filter((h: any) => h.equipo_revisado_en).map((h: any) => `${h.telefono}|${new Date(h.sesion_inicio).getTime()}`))

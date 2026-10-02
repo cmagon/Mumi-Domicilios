@@ -20,3 +20,9 @@ export async function construirProveedor(sb: SupabaseClient, cfg: Record<string,
   if (!key) throw new Error(`API key de ${p} no configurada`)
   return { proveedor: p, apiKey: key, modelo: cfg.modelo_ia || modeloPorDefecto(p) }
 }
+
+// Números del equipo (administradores, socios y domiciliario): nunca son clientes (ni recordatorios, ni promociones, ni análisis de ventas)
+export const numerosEquipo = (cfg: Record<string, string>): string[] =>
+  [...(cfg.admin_numeros ?? '').split(','), cfg.domiciliario_numero ?? ''].map((x) => x.replace(/\D/g, '')).filter(Boolean)
+// deno-lint-ignore no-explicit-any
+export const sinEquipo = <T>(q: T, cfg: Record<string, string>): T => { const n = numerosEquipo(cfg); return n.length ? (q as any).not('telefono', 'in', `(${n.join(',')})`) : q }
