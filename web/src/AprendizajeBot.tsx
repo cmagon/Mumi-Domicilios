@@ -19,6 +19,7 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
   const [edit, setEdit] = useState<{ id: string; texto: string; hasta: string } | null>(null)
   const [nuevaHasta, setNuevaHasta] = useState('')
   const [conf, setConf] = useState<Confirmacion | null>(null)
+  const [abiertos, setAbiertos] = useState<Set<string>>(new Set()) // grupos de fecha desplegados (se conservan al aprobar, editar o eliminar)
 
   const cargar = useCallback(async () => {
     const [r, b] = await Promise.all([
@@ -32,6 +33,7 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
   const decidir = async (x: Regla, estado: 'activa' | 'descartada') => {
     const { error } = await supabase.from('bot_aprendizajes').update({ estado, decidido_en: new Date().toISOString() }).eq('id', x.id)
     if (error) { toast(error.message, 'err'); return false }
+    if (estado === 'activa') setAbiertos((o) => new Set(o).add(`act:${x.creado_en.slice(0, 10)}`)) // la regla aprobada queda a la vista en "Activas"
     toast(estado === 'activa' ? 'Regla activada: el bot la aplica desde el próximo mensaje' : 'Regla descartada'); cargar()
   }
   const guardarEdicion = async () => {
@@ -91,15 +93,21 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
     l.forEach((r) => { const k = r.creado_en.slice(0, 10); m.set(k, [...(m.get(k) ?? []), r]) })
     return [...m.entries()].sort(([a], [b]) => b.localeCompare(a))
   }
-  const Grupos = ({ l, abiertoPrimero }: { l: Regla[]; abiertoPrimero?: boolean }) => (
-    <>{porFecha(l).map(([dia, rs], i) => (
-      <details className="grupo-reglas" key={dia} open={abiertoPrimero && i === 0 && false}>
-        <summary>📅 {new Date(dia + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })} <b>{rs.length}</b></summary>
-        {rs.map((x) => <Fila key={x.id} x={x} />)}
-      </details>))}</>
+  // IMPORTANTE: son funciones que devuelven JSX (no componentes definidos aquí dentro). Un componente creado dentro de otro se vuelve a montar
+  // en cada actualización: por eso los grupos se colapsaban y no dejaba editar (se perdía el cursor en cada tecla).
+  const grupos = (l: Regla[], seccion: string) => (
+    <>{porFecha(l).map(([dia, rs]) => {
+      const k = `${seccion}:${dia}`
+      return (
+        <details className="grupo-reglas" key={k} open={abiertos.has(k)}
+          onToggle={(e) => { const o = (e.currentTarget as HTMLDetailsElement).open; setAbiertos((a) => (a.has(k) === o ? a : (() => { const n = new Set(a); o ? n.add(k) : n.delete(k); return n })())) }}>
+          <summary>📅 {new Date(dia + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })} <b>{rs.length}</b></summary>
+          {rs.map((x) => fila(x))}
+        </details>)
+    })}</>
   )
-  const Fila = ({ x }: { x: Regla }) => (
-    <div className="regla">
+  const fila = (x: Regla) => (
+    <div className="regla" key={x.id}>
       {edit?.id === x.id
         ? <><textarea style={{ minHeight: 60 }} value={edit.texto} onChange={(e) => setEdit({ ...edit, texto: e.target.value })} />
           <label>Vigente hasta (opcional: pasada esa fecha el bot deja de aplicarla)</label><input type="date" value={edit.hasta} onChange={(e) => setEdit({ ...edit, hasta: e.target.value })} />
@@ -125,11 +133,11 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
           label="Aprendizaje automático: activar solas las sugerencias nuevas (puedes desactivar cualquiera después)" />
         <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton><AsyncButton className="sec" okText="Revisadas" onClick={aprenderEquipo}>Aprender de mis respuestas</AsyncButton></div>
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Por aprobar ({pendientes.length})</h3>
-        <Grupos l={pendientes} />
+        {grupos(pendientes, 'pend')}
         {!pendientes.length && <p className="muted">No hay reglas propuestas. Se revisan solas unas pocas conversaciones en cada ciclo del cron.</p>}
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Activas ({activas.length})</h3>
-        <Grupos l={activas} />
-        {integradas.length > 0 && <><h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Ya en el prompt maestro ({integradas.length})</h3><Grupos l={integradas} /></>}
+        {grupos(activas, 'act')}
+        {integradas.length > 0 && <><h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Ya en el prompt maestro ({integradas.length})</h3>{grupos(integradas, 'int')}</>}
         <label>Agregar una regla tú mismo</label>
         <div className="row"><input placeholder="ej. Si el cliente escribe Nequii, entiende Nequi" value={nueva} onChange={(e) => setNueva(e.target.value)} /><input type="date" style={{ maxWidth: 170 }} title="Vigente hasta (opcional)" min={new Date().toLocaleDateString('en-CA')} value={nuevaHasta} onChange={(e) => setNuevaHasta(e.target.value)} /><AsyncButton okText="Agregada" onClick={agregar}>Agregar</AsyncButton></div>
       </div>}
