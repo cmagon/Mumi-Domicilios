@@ -6,16 +6,19 @@ import { construirProveedor } from './config.ts'
 import { sendText } from './wa.ts'
 import { barrioSinDomicilio, cargarExcepciones, esDiaProduccion, fechaBogota } from './tools.ts'
 import { horaHablada } from './texto.ts'
+import { ejecutarCancelacion, reporteDia, vistaCancelacion } from './adminresumen.ts'
 
 const AYUDA = `Estás en modo administrador 👩‍🍳 (no te trato como cliente). Puedes escribirme o mandarme una nota de voz:
 • Crear un pedido: "pedido para Juan Pérez, 3001234567, 3 de maracuyá y 2 de cacao, mañana, domicilio en calle 20 #22-10, paga en efectivo"
+• "dame un reporte de hoy" (pedidos, clientes, ventas, galletas)
+• "voy a cancelar los pedidos de hoy porque …" (aviso a cada cliente)
 • evento: … · instrucción: … · avisos · quitar aviso N
 • hoy: cacao 30, limón 20 · fabricadas: cacao 40
 • Foto o video con el pie "foto: Cacao" o "nuevo: Nombre, precio, descripción"
 • reanudar 57300… (devuelve un chat al bot)`
 
-const SISTEMA = `Eres el asistente del administrador de Mumi (galletas por WhatsApp). El administrador te dicta (a veces por voz, con errores de transcripción) algo. Decide si quiere CREAR UN PEDIDO para otra persona y extrae los datos usando SOLO lo que dijo. Responde SOLO un JSON:
-{"intencion":"pedido"|"otro","nombre":string|null,"telefono":string|null,"items":[{"sabor":"nombre EXACTO de la lista","cantidad":número}],"modalidad":"domicilio"|"recoger"|null,"direccion":string|null,"zona_tarifa":"nombre EXACTO de la lista de tarifas"|null,"metodo_pago":"nombre EXACTO de la lista"|"Efectivo"|null,"pagado":true|false,"fecha_entrega":"YYYY-MM-DD"|null,"hora_entrega":"HH:MM"|null,"franja":string|null,"nota":string|null,"avisar_cliente":true|false,"completo":true|false,"pregunta":"UNA pregunta corta con TODO lo que falta"|null}
+const SISTEMA = `Eres el asistente del administrador de Mumi (galletas por WhatsApp). El administrador te dicta (a veces por voz, con errores de transcripción) algo. Decide qué quiere: CREAR UN PEDIDO para otra persona (extrae los datos usando SOLO lo que dijo), pedir un REPORTE (cuántos clientes, pedidos, ventas, galletas… de un día), CANCELAR LOS PEDIDOS de un día avisando a los clientes ("voy a cancelar los pedidos de hoy porque no puedo…"), u otra cosa. Responde SOLO un JSON:
+{"intencion":"pedido"|"reporte"|"cancelar_dia"|"otro","fecha_reporte":"YYYY-MM-DD"|null (para reporte o cancelar_dia; por defecto hoy),"motivo":"razón breve y amable para decirle a los clientes, sin datos internos"|null,"nombre":string|null,"telefono":string|null,"items":[{"sabor":"nombre EXACTO de la lista","cantidad":número}],"modalidad":"domicilio"|"recoger"|null,"direccion":string|null,"zona_tarifa":"nombre EXACTO de la lista de tarifas"|null,"metodo_pago":"nombre EXACTO de la lista"|"Efectivo"|null,"pagado":true|false,"fecha_entrega":"YYYY-MM-DD"|null,"hora_entrega":"HH:MM"|null,"franja":string|null,"nota":string|null,"avisar_cliente":true|false,"completo":true|false,"pregunta":"UNA pregunta corta con TODO lo que falta"|null}
 Obligatorios para completo=true: nombre, items, fecha_entrega, modalidad y metodo_pago; si es domicilio también zona_tarifa (si hay una sola tarifa úsala). El teléfono es opcional (sin teléfono no se avisa al cliente). Si falta la dirección en un domicilio, completo=true igual (queda "llamar para pedir la dirección"). Interpreta fechas relativas con la fecha de hoy. "pagado" solo si dijo que ya pagó. "avisar_cliente" true si pidió avisarle.`
 
 type Datos = Record<string, any>
@@ -78,7 +81,15 @@ export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, str
 
   // Borrador listo: esperando "sí" / "no"
   if (vigente && bor.estado === 'confirmar') {
-    if (/^(s[ií]|dale|ok|listo|confirmo|confirmado|claro|de una)\b/i.test(t)) return await crear(sb, cfg, from, bor.datos)
+    if (/^(s[ií]|dale|ok|listo|confirmo|confirmado|claro|de una)\b/i.test(t)) {
+      if (bor.datos?.tipo === 'cancelar_dia') {
+        await sb.from('admin_borradores').delete().eq('admin_telefono', from)
+        await sendText(from, 'Cancelando y avisando a los clientes… ⏳')
+        await sendText(from, await ejecutarCancelacion(sb, bor.datos.fecha, bor.datos.motivo ?? null))
+        return true
+      }
+      return await crear(sb, cfg, from, bor.datos)
+    }
     if (/^(no|cancelar|cancela|descartar)\b/i.test(t)) { await sb.from('admin_borradores').delete().eq('admin_telefono', from); await sendText(from, 'Listo, descarté ese pedido.'); return true }
   }
   if (/^(cancelar|cancela)\b/i.test(t) && vigente) { await sb.from('admin_borradores').delete().eq('admin_telefono', from); await sendText(from, 'Listo, descarté ese pedido.'); return true }
@@ -86,6 +97,15 @@ export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, str
   const crudo = vigente ? `${bor.crudo}\n${t}` : t
   try {
     const d = await parsear(sb, cfg, crudo)
+    if (d.intencion === 'reporte' && !vigente) { await sendText(from, await reporteDia(sb, d.fecha_reporte || fechaBogota())); return true }
+    if (d.intencion === 'cancelar_dia' && !vigente) {
+      const fecha = d.fecha_reporte || fechaBogota()
+      const v = await vistaCancelacion(sb, fecha)
+      if (!v.ped.length) { await sendText(from, `No hay pedidos activos para esa fecha, no hay nada que cancelar.`); return true }
+      await sb.from('admin_borradores').upsert({ admin_telefono: from, crudo: t, datos: { tipo: 'cancelar_dia', fecha, motivo: d.motivo ?? null }, estado: 'confirmar', actualizado_en: new Date().toISOString() }, { onConflict: 'admin_telefono' })
+      await sendText(from, `Voy a CANCELAR ${v.ped.length} pedido${v.ped.length === 1 ? '' : 's'} y avisar a cada cliente por WhatsApp${d.motivo ? ` (motivo: ${d.motivo})` : ''}:\n${v.resumen}\n\nLos que estén fuera de la ventana de 24 h no se podrán avisar y te los listaré. ¿Confirmas? Responde "sí" o "no".`)
+      return true
+    }
     if (d.intencion !== 'pedido' && !vigente) { await sendText(from, AYUDA); return true }
     const r = await resolver(sb, cfg, d)
     const falta = !d.nombre || !d.fecha_entrega || !d.modalidad || !d.metodo_pago || !r.items.length
