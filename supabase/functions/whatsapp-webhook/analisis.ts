@@ -39,10 +39,21 @@ export async function analizarSesiones(sb: SupabaseClient, cfg: Record<string, s
 
 const SISTEMA_APRENDER = `Eres el coach del bot de ventas de Mumi (galletas por WhatsApp). Lee la conversación entre el Cliente, el Bot y el Equipo y detecta fricciones atribuibles al BOT: repetir información o preguntas, responder varias veces a mensajes seguidos, contradecirse (decir que hay galletas y luego que no), insistir en algo que el cliente ya resolvió, ignorar lo que dijo el cliente, pedir datos ya dados, mensajes confusos o no entender jerga y errores de escritura.
 Responde SOLO un JSON: {"calidad":1-5,"fricciones":["..."],"reglas":["..."]}
-"reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. El aprendizaje es GLOBAL (no por cliente): generaliza. NUNCA incluyas datos personales, nombres, teléfonos ni precios o cifras exactas. No repitas reglas que ya existen (te las paso). Si no hubo fricción: calidad 5 y listas vacías.`
+"reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. El aprendizaje es GLOBAL (no por cliente): generaliza. NUNCA incluyas datos personales, nombres, teléfonos ni precios o cifras exactas. Sé MUY selectivo: propón solo reglas realmente nuevas; NO repitas ni reformules nada que ya esté en el prompt del bot ni en las reglas registradas o descartadas (te los paso). Si dudas, no propongas. Si no hubo fricción: calidad 5 y listas vacías.`
 
 // Con "aprendizaje automático" activado, las sugerencias nuevas se activan solas; si no, quedan por aprobar
 const estadoNuevo = (cfg: Record<string, string>) => cfg.aprendizaje_auto === 'si' ? { estado: 'activa', decidido_en: new Date().toISOString() } : { estado: 'pendiente' }
+// Palabras significativas de una regla; sirve para detectar casi-duplicados (no solo textos idénticos)
+const palabras = (t: string) => new Set(norm(t).split(' ').filter((w) => w.length > 3))
+const parecida = (a: string, existentes: Set<string>[]) => { const x = palabras(a); if (x.size < 3) return false; return existentes.some((y) => { let n = 0; x.forEach((w) => { if (y.has(w)) n++ }); return n / Math.min(x.size, y.size) >= 0.6 }) }
+// Lo que el bot ya sabe: prompt maestro + reglas vigentes + reglas descartadas (esas no se vuelven a proponer)
+async function conocido(sb: SupabaseClient, cfg: Record<string, string>) {
+  const { data } = await sb.from('bot_aprendizajes').select('regla,estado').order('creado_en', { ascending: false }).limit(200)
+  const reglas = (data ?? []).map((x: any) => x.regla as string)
+  const prompt = String(cfg.system_prompt ?? '').slice(0, 9000)
+  return { reglas, vistas: new Set(reglas.map(norm)), pal: [...reglas.map(palabras), ...prompt.split(/\n|(?<=[.!?])\s/).filter((l) => l.length > 25).map(palabras)],
+    contexto: `PROMPT ACTUAL DEL BOT (lo que ya sabe; NO propongas nada que ya diga o implique):\n${prompt}\n\nReglas ya registradas o descartadas (NO las repitas ni las reformules):\n${reglas.map((r) => '- ' + r).join('\n') || '(ninguna)'}` }
+}
 const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 
 // Aprendizaje continuo: revisa conversaciones cerradas (con o sin venta) y propone reglas nuevas (quedan "pendientes" hasta que el admin las active)
@@ -54,9 +65,8 @@ export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string,
   const ya = new Set((hechas ?? []).map((h) => `${h.telefono}|${new Date(h.sesion_inicio).getTime()}`))
   const pend = ses.filter((x) => !ya.has(`${x.telefono}|${new Date(x.inicio).getTime()}`)).slice(0, limite)
   if (!pend.length) return { revisadas: 0, reglas: 0 }
-  const { data: exist } = await sb.from('bot_aprendizajes').select('regla').neq('estado', 'descartada').limit(60)
-  const existentes = (exist ?? []).map((x) => x.regla as string)
-  const vistas = new Set(existentes.map(norm))
+  const k = await conocido(sb, cfg)
+  const { vistas, pal } = k
   const prov = await construirProveedor(sb, cfg)
   let revisadas = 0, reglas = 0
   for (const s of pend) {
@@ -64,15 +74,15 @@ export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string,
       const { data: msgs } = await sb.from('mensajes').select('rol,contenido').eq('telefono', s.telefono)
         .gte('creado_en', s.inicio).lte('creado_en', s.fin).order('creado_en').limit(100)
       const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
-      const out = await chat(prov, SISTEMA_APRENDER, [{ role: 'user', content: `Reglas que ya existen:\n${existentes.map((r) => '- ' + r).join('\n') || '(ninguna)'}\n\nConversación:\n${texto}` }], [], async () => ({}))
+      const out = await chat(prov, SISTEMA_APRENDER, [{ role: 'user', content: `${k.contexto}\n\nConversación:\n${texto}` }], [], async () => ({}))
       const j = out.match(/\{[\s\S]*\}/)
       if (!j) continue
       const r = JSON.parse(j[0])
       const fricciones = (Array.isArray(r.fricciones) ? r.fricciones : []).map((x: unknown) => String(x).slice(0, 200)).slice(0, 5)
       for (const regla of (Array.isArray(r.reglas) ? r.reglas : []).slice(0, 3)) {
         const t = String(regla).trim().slice(0, 240)
-        if (t.length < 15 || vistas.has(norm(t))) continue
-        vistas.add(norm(t)); reglas++
+        if (t.length < 15 || vistas.has(norm(t)) || parecida(t, pal)) continue
+        vistas.add(norm(t)); pal.push(palabras(t)); reglas++
         await sb.from('bot_aprendizajes').insert({ regla: t, evidencia: ((fricciones.join(' · ') || '') + (cfg.aprendizaje_auto === 'si' ? ' · activada automáticamente' : '')) || null, origen_telefono: s.telefono, ...estadoNuevo(cfg) })
       }
       await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, calidad: Math.min(5, Math.max(1, Number(r.calidad) || 3)), fricciones }, { onConflict: 'telefono,sesion_inicio' })
@@ -103,7 +113,7 @@ const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repost
 - "estilo": cómo habla la persona (tono, saludos, muletillas, nivel de formalidad, uso de emojis, longitud) → instrucción en imperativo para imitarla, con un ejemplo corto entre comillas si ayuda.
 - "conocimiento": datos concretos que la persona dio y que el bot no sabía (ingredientes, ubicación, tiempos, cómo se hace algo) → "Si preguntan X, responde: …". No incluyas precios si pueden cambiar, ni datos personales.
 - "politica": decisiones o excepciones del equipo (qué hace ante una queja, un cambio, un pedido especial, p. ej. "se puede conceder descuento por compras grandes"). El aprendizaje es GLOBAL: lo acordado con un cliente aplica a otros que pregunten lo mismo; redáctalo como criterio general SIN cantidades, porcentajes ni precios exactos (di "se puede estudiar un descuento" y que el equipo confirma la cifra).
-Reglas: máx. 4 elementos, cada texto de máx. 240 caracteres, generales (sirven para otros clientes), sin nombres ni teléfonos. No repitas las reglas existentes (te las paso). Si no hay nada útil: {"reglas":[]}.`
+Reglas: máx. 4 elementos, cada texto de máx. 240 caracteres, generales (sirven para otros clientes), sin nombres ni teléfonos. Sé MUY selectivo: solo lo realmente nuevo; NO repitas ni reformules nada que ya esté en el prompt del bot ni en las reglas registradas o descartadas (te los paso). Si dudas, devuelve []. Si no hay nada útil: {"reglas":[]}.`
 
 // Aprende de cómo y qué responde el equipo (humano): estilo, conocimiento y políticas. Quedan como reglas "pendientes" para aprobar.
 export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, string>, limite = 3): Promise<{ revisadas: number; reglas: number }> {
@@ -111,9 +121,8 @@ export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, 
   if (!ses?.length) return { revisadas: 0, reglas: 0 }
   const { data: hechas } = await sb.from('chats_revision').select('telefono,sesion_inicio,equipo_revisado_en').in('telefono', [...new Set(ses.map((x) => x.telefono))])
   const ya = new Set((hechas ?? []).filter((h: any) => h.equipo_revisado_en).map((h: any) => `${h.telefono}|${new Date(h.sesion_inicio).getTime()}`))
-  const { data: exist } = await sb.from('bot_aprendizajes').select('regla').neq('estado', 'descartada').limit(80)
-  const existentes = (exist ?? []).map((x) => x.regla as string)
-  const vistas = new Set(existentes.map(norm))
+  const k = await conocido(sb, cfg)
+  const { vistas, pal } = k
   const prov = await construirProveedor(sb, cfg)
   let revisadas = 0, reglas = 0
   for (const s of ses) {
@@ -124,12 +133,12 @@ export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, 
     if (!(msgs ?? []).some((m) => m.rol === 'admin')) continue // sin intervención humana: nada que aprender del equipo
     try {
       const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
-      const out = await chat(prov, SISTEMA_EQUIPO, [{ role: 'user', content: `Reglas que ya existen:\n${existentes.map((r) => '- ' + r).join('\n') || '(ninguna)'}\n\nConversación:\n${texto}` }], [], async () => ({}))
+      const out = await chat(prov, SISTEMA_EQUIPO, [{ role: 'user', content: `${k.contexto}\n\nConversación:\n${texto}` }], [], async () => ({}))
       const j = out.match(/\{[\s\S]*\}/)
       if (j) for (const r of (JSON.parse(j[0]).reglas ?? []).slice(0, 4)) {
         const t = String(r.texto ?? '').trim().slice(0, 260)
-        if (t.length < 15 || vistas.has(norm(t))) continue
-        vistas.add(norm(t)); reglas++
+        if (t.length < 15 || vistas.has(norm(t)) || parecida(t, pal)) continue
+        vistas.add(norm(t)); pal.push(palabras(t)); reglas++
         await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo' + (cfg.aprendizaje_auto === 'si' ? ' · activada automáticamente' : ''), origen_telefono: s.telefono, ...estadoNuevo(cfg) })
       }
       await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, equipo_revisado_en: new Date().toISOString() }, { onConflict: 'telefono,sesion_inicio' })
