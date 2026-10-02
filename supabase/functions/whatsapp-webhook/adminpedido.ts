@@ -6,12 +6,11 @@ import { construirProveedor } from './config.ts'
 import { sendText } from './wa.ts'
 import { barrioSinDomicilio, cargarExcepciones, esDiaProduccion, fechaBogota } from './tools.ts'
 import { horaHablada } from './texto.ts'
-import { conversarEquipo } from './equipo.ts'
-import { ejecutarCancelacion, reporteDia, vistaCancelacion } from './adminresumen.ts'
+import { agenteAdmin, ejecutarAccion } from './adminagente.ts'
 
 const AYUDA = `Estás en modo administrador 👩‍🍳 (no te trato como cliente). Puedes escribirme o mandarme una nota de voz:
 • Crear un pedido: "pedido para Juan Pérez, 3001234567, 3 de maracuyá y 2 de cacao, mañana, domicilio en calle 20 #22-10, paga en efectivo"
-• "dame un reporte de hoy" (pedidos, clientes, ventas, galletas)
+• Háblame natural: "hice 30 de cacao y 20 de limón", "dame un reporte de hoy", "¿cuánto stock hay?", "pasa el pedido 12 a listo", "cierra mañana", "sube el precio de X"…\n• "dame un reporte de hoy" (pedidos, clientes, ventas, galletas)
 • "voy a cancelar los pedidos de hoy porque …" (aviso a cada cliente)
 • evento: … · instrucción: … · avisos · quitar aviso N
 • hoy: cacao 30, limón 20 · fabricadas: cacao 40
@@ -79,35 +78,36 @@ export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, str
   if (!t) return true
   if (/^(ayuda|help|men[uú]|comandos|\?)$/i.test(t)) { await sendText(from, AYUDA); return true }
   const { data: bor } = await sb.from('admin_borradores').select('*').eq('admin_telefono', from).maybeSingle()
-  const vigente = bor && Date.now() - new Date(bor.actualizado_en).getTime() < 30 * 60000
+  const vigente = !!bor && Date.now() - new Date(bor.actualizado_en).getTime() < 30 * 60000
+  const accion = vigente && bor!.datos?.tipo === 'accion'
 
-  // Borrador listo: esperando "sí" / "no"
-  if (vigente && bor.estado === 'confirmar') {
-    if (/^(s[ií]|dale|ok|listo|confirmo|confirmado|claro|de una)\b/i.test(t)) {
-      if (bor.datos?.tipo === 'cancelar_dia') {
+  // Algo esperando "sí" / "no": se ejecuta en código (instantáneo y seguro)
+  if (vigente && bor!.estado === 'confirmar') {
+    if (/^(s[ií]|sip|dale|ok|okey|listo|confirmo|confirmado|claro|de una|hágale|hagale)\b/i.test(t)) {
+      if (accion) {
         await sb.from('admin_borradores').delete().eq('admin_telefono', from)
-        await sendText(from, 'Cancelando y avisando a los clientes… ⏳')
-        await sendText(from, await ejecutarCancelacion(sb, bor.datos.fecha, bor.datos.motivo ?? null))
+        if (bor!.datos.tool === 'cancelar_pedidos_dia') await sendText(from, 'Cancelando y avisando a los clientes… ⏳')
+        await sendText(from, await ejecutarAccion(sb, bor!.datos.tool, bor!.datos.args ?? {}))
         return true
       }
-      return await crear(sb, cfg, from, bor.datos)
+      return await crear(sb, cfg, from, bor!.datos)
     }
-    if (/^(no|cancelar|cancela|descartar)\b/i.test(t)) { await sb.from('admin_borradores').delete().eq('admin_telefono', from); await sendText(from, 'Listo, descarté ese pedido.'); return true }
+    if (/^(no|nop|cancelar|cancela|descartar|déjalo|dejalo)\b/i.test(t)) { await sb.from('admin_borradores').delete().eq('admin_telefono', from); await sendText(from, 'Listo, lo descarté.'); return true }
   }
-  if (/^(cancelar|cancela)\b/i.test(t) && vigente) { await sb.from('admin_borradores').delete().eq('admin_telefono', from); await sendText(from, 'Listo, descarté ese pedido.'); return true }
+  if (/^(cancelar|cancela)\b/i.test(t) && vigente) { await sb.from('admin_borradores').delete().eq('admin_telefono', from); await sendText(from, 'Listo, lo descarté.'); return true }
 
-  const crudo = vigente ? `${bor.crudo}\n${t}` : t
+  // Pedido dictado en curso (borrador): sigue ese flujo; todo lo demás lo atiende el asistente con herramientas
+  if (vigente && !accion) return await flujoPedido(sb, cfg, from, t, true, bor)
+  await agenteAdmin(sb, cfg, from)
+  return true
+}
+
+// Pedido dictado por el admin: interpreta, pregunta lo que falte y pide confirmación
+export async function flujoPedido(sb: SupabaseClient, cfg: Record<string, string>, from: string, t: string, vigente: boolean, bor: Datos | null): Promise<boolean> {
+  const crudo = vigente && bor ? `${bor.crudo}\n${t}` : t
   try {
     const d = await parsear(sb, cfg, crudo)
-    if (d.intencion === 'reporte' && !vigente) { await sendText(from, await reporteDia(sb, d.fecha_reporte || fechaBogota())); return true }
-    if (d.intencion === 'cancelar_dia' && !vigente) {
-      const fecha = d.fecha_reporte || fechaBogota()
-      const v = await vistaCancelacion(sb, fecha)
-      await sb.from('admin_borradores').upsert({ admin_telefono: from, crudo: t, datos: { tipo: 'cancelar_dia', fecha, motivo: d.motivo ?? null }, estado: 'confirmar', actualizado_en: new Date().toISOString() }, { onConflict: 'admin_telefono' })
-      await sendText(from, `Voy a CERRAR esa fecha (el bot dejará de ofrecer y reservar)${v.ped.length ? ` y a CANCELAR ${v.ped.length} pedido${v.ped.length === 1 ? '' : 's'}, avisando a cada cliente por WhatsApp${d.motivo ? ` (motivo: ${d.motivo})` : ''}:\n${v.resumen}\n\nLos que estén fuera de la ventana de 24 h no se podrán avisar y te los listaré.` : ' (no hay pedidos activos que cancelar).'} ¿Confirmas? Responde "sí" o "no".`)
-      return true
-    }
-    if (d.intencion !== 'pedido' && !vigente) { await conversarEquipo(sb, cfg, from, t, 'admin'); return true }
+    if (d.intencion !== 'pedido' && !vigente) { await sendText(from, 'No pude armar un pedido con eso 🙈 Dime el nombre, los sabores, la fecha, domicilio o recoger y el pago.'); return true }
     const r = await resolver(sb, cfg, d)
     const falta = !d.nombre || !d.fecha_entrega || !d.modalidad || !d.metodo_pago || !r.items.length
     if (falta || r.problemas.length) {
@@ -119,9 +119,8 @@ export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, str
     await sb.from('admin_borradores').upsert({ admin_telefono: from, crudo, datos: d, estado: 'confirmar', actualizado_en: new Date().toISOString() }, { onConflict: 'admin_telefono' })
     await sendText(from, `${resumen(d, r)}\n\n¿Lo creo? Responde "sí" para confirmar, "no" para descartar o dime qué cambiar.`)
   } catch (e) {
-    console.error('asistenteAdmin', e)
-    if (vigente) await sendText(from, 'No pude interpretar eso 🙈 ¿Me lo dices de nuevo con el nombre, los sabores, la fecha, domicilio o recoger y el pago?')
-    else await conversarEquipo(sb, cfg, from, t, 'admin')
+    console.error('flujoPedido', e)
+    await sendText(from, 'No pude interpretar eso 🙈 ¿Me lo dices de nuevo con el nombre, los sabores, la fecha, domicilio o recoger y el pago?')
   }
   return true
 }

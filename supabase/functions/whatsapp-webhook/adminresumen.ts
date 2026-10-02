@@ -105,6 +105,18 @@ export async function avisoAdminWA(sb: SupabaseClient, titulo: string, detalle?:
   } catch (e) { console.error('avisoAdminWA', e) }
 }
 
+// Resumen de aprendizaje del día: lo que el bot integró solo (mejoras sencillas) y lo que espera aprobación
+export async function resumenAprendizaje(sb: SupabaseClient): Promise<string> {
+  const { data: pend } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'pendiente').order('creado_en').limit(30)
+  const desde = new Date(`${fechaBogota()}T00:00:00-05:00`).toISOString()
+  const { data: auto } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').like('evidencia', '%activada automáticamente%').gte('creado_en', desde).limit(10)
+  if (!pend?.length && !auto?.length) return ''
+  let t = '🧠 Aprendizaje del bot\n'
+  if (auto?.length) t += `Hoy integré solo ${auto.length} mejora${auto.length === 1 ? '' : 's'} sencilla${auto.length === 1 ? '' : 's'} (de cómo se expresa el equipo): ${auto.slice(0, 3).map((x) => '«' + String(x.regla).slice(0, 70) + '»').join(' · ')}\n`
+  if (pend?.length) t += `\nPendientes de tu aprobación (${pend.length}):\n${pend.slice(0, 6).map((x, i) => `${i + 1}. ${String(x.regla).slice(0, 140)}`).join('\n')}${pend.length > 6 ? '\n…' : ''}\n\nResponde "aprobar todo", "aprobar 1 y 3", "descartar 2" o dime qué aclarar.`
+  return t.trim()
+}
+
 // ---- Resúmenes automáticos al admin (cron) ----
 const claveEstado = (tel: string) => `admin_resumen_${tel}`
 const horaCO = () => { const d = new Date(); const p = d.toLocaleTimeString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false }).split(':'); return { h: +p[0] % 24, m: +p[1] } }
@@ -129,7 +141,13 @@ export async function resumenAdmin(sb: SupabaseClient, cfg: Record<string, strin
     const novedades = async () => (await pendientes(sb)) || 'Sin novedades por revisar ✅'
     const cierraAntesDe7 = cierre < new Date(`${suma(hoy, 1)}T07:00:00-05:00`).getTime()
     let texto: string | null = null, tag = ''
-    if (h === 18 && m < 10 && !hecho.has(`d:${hoy}`)) {
+    if (h === 19 && m < 10 && !hecho.has(`l:${hoy}`)) {
+      // Fin del día: resumen corto de lo que aprendió y lo que necesita que apruebe o aclare
+      tag = `l:${hoy}`
+      const ap = await resumenAprendizaje(sb)
+      if (!ap) { await marcar(tag); continue }
+      texto = `${ap}${pie}`
+    } else if (h === 18 && m < 10 && !hecho.has(`d:${hoy}`)) {
       tag = `d:${hoy}`
       texto = `🌇 Resumen de las 6 p. m.\n\n${await reporteDia(sb, hoy)}\n\n${await reporteDia(sb, suma(hoy, 1))}\n\n${await novedades()}${pie}`
     } else if (h === 21 && m < 10 && cierraAntesDe7 && !hecho.has(`n0:${ult.creado_en}`)) {
