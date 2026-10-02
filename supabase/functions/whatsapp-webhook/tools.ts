@@ -212,7 +212,9 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
   const ex = await cargarExcepciones(sb)
   switch (name) {
     case 'consultar_catalogo': {
-      const { data } = await sb.from('productos').select('id,nombre,descripcion,detalles,precio,foto_url').eq('activo', true).order('nombre')
+      // La categoría (migración 0043) se incluye si existe; si aún no se corrió, funciona igual sin ella
+      let { data } = await sb.from('productos').select('id,nombre,descripcion,detalles,precio,foto_url,categorias_producto(nombre)').eq('activo', true).order('nombre') as { data: any[] | null; error?: unknown }
+      if (!data) ({ data } = await sb.from('productos').select('id,nombre,descripcion,detalles,precio,foto_url').eq('activo', true).order('nombre'))
       const { data: medios } = await sb.from('producto_medios').select('producto_id,url,tipo,principal,orden').order('orden')
       const de = (id: string) => (medios ?? []).filter((m) => m.producto_id === id)
       if (a.mas_fotos_de) {
@@ -231,7 +233,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
           const ms = de(p.id); const pr = ms.find((m) => m.principal && m.tipo === 'image') ?? ms.find((m) => m.tipo === 'image')
           return { link: (pr?.url ?? p.foto_url) as string, caption: `${p.nombre} — $${p.precio}`, tipo: 'image' as const }
         }).filter((f) => f.link)
-      return (data ?? []).map(({ id, nombre, descripcion, detalles, precio }) => ({ nombre, descripcion, detalles: detalles || null, precio, fotos_o_videos_extra: Math.max(0, de(id).length - 1), nota: 'Solo puedes afirmar lo que dicen descripcion y detalles; si falta un dato, no lo inventes. Si fotos_o_videos_extra > 0 puedes ofrecer enviar más.' }))
+      return (data ?? []).map(({ id, nombre, descripcion, detalles, precio, categorias_producto }: any) => ({ nombre, categoria: categorias_producto?.nombre ?? null, descripcion, detalles: detalles || null, precio, fotos_o_videos_extra: Math.max(0, de(id).length - 1), nota: 'Solo puedes afirmar lo que dicen descripcion y detalles; si falta un dato, no lo inventes. Si fotos_o_videos_extra > 0 puedes ofrecer enviar más.' }))
     }
     case 'enviar_ubicacion_local': {
       ctx.enviarLocal = true

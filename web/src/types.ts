@@ -1,4 +1,5 @@
-export type Producto = { id: string; nombre: string; descripcion: string; detalles?: string; precio: number; foto_url: string | null; activo: boolean }
+export type Producto = { id: string; nombre: string; descripcion: string; detalles?: string; precio: number; foto_url: string | null; activo: boolean; categoria_id?: string | null }
+export type Categoria = { id: string; nombre: string; orden: number }
 export type Stock = { id: string; fecha: string; producto_id: string; cantidad_agendada: number; cantidad_excedente: number; total_disponible: number }
 export type Pedido = {
   id: string; numero: number; cliente_nombre: string; cliente_telefono: string; origen: 'bot' | 'manual'; estado: string
