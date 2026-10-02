@@ -41,6 +41,8 @@ const SISTEMA_APRENDER = `Eres el coach del bot de ventas de Mumi (galletas por 
 Responde SOLO un JSON: {"calidad":1-5,"fricciones":["..."],"reglas":["..."]}
 "reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. NUNCA incluyas datos personales, nombres, teléfonos ni precios. No repitas reglas que ya existen (te las paso). Si no hubo fricción: calidad 5 y listas vacías.`
 
+// Con "aprendizaje automático" activado, las sugerencias nuevas se activan solas; si no, quedan por aprobar
+const estadoNuevo = (cfg: Record<string, string>) => cfg.aprendizaje_auto === 'si' ? { estado: 'activa', decidido_en: new Date().toISOString() } : { estado: 'pendiente' }
 const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 
 // Aprendizaje continuo: revisa conversaciones cerradas (con o sin venta) y propone reglas nuevas (quedan "pendientes" hasta que el admin las active)
@@ -71,7 +73,7 @@ export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string,
         const t = String(regla).trim().slice(0, 240)
         if (t.length < 15 || vistas.has(norm(t))) continue
         vistas.add(norm(t)); reglas++
-        await sb.from('bot_aprendizajes').insert({ regla: t, evidencia: fricciones.join(' · ') || null, origen_telefono: s.telefono, estado: 'pendiente' })
+        await sb.from('bot_aprendizajes').insert({ regla: t, evidencia: ((fricciones.join(' · ') || '') + (cfg.aprendizaje_auto === 'si' ? ' · activada automáticamente' : '')) || null, origen_telefono: s.telefono, ...estadoNuevo(cfg) })
       }
       await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, calidad: Math.min(5, Math.max(1, Number(r.calidad) || 3)), fricciones }, { onConflict: 'telefono,sesion_inicio' })
       revisadas++
@@ -128,7 +130,7 @@ export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, 
         const t = String(r.texto ?? '').trim().slice(0, 260)
         if (t.length < 15 || vistas.has(norm(t))) continue
         vistas.add(norm(t)); reglas++
-        await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo', origen_telefono: s.telefono, estado: 'pendiente' })
+        await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo' + (cfg.aprendizaje_auto === 'si' ? ' · activada automáticamente' : ''), origen_telefono: s.telefono, ...estadoNuevo(cfg) })
       }
       await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, equipo_revisado_en: new Date().toISOString() }, { onConflict: 'telefono,sesion_inicio' })
       revisadas++

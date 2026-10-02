@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { AsyncButton, Confirmar, useToast, type Confirmacion } from './ui'
+import { AsyncButton, Confirmar, Switch, useToast, type Confirmacion } from './ui'
+import { useConfig } from './hooks'
 
 type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada' | 'integrada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null; categoria?: string | null }
 const CAT: Record<string, string> = { estilo: '🗣 Estilo del equipo', conocimiento: '💡 Dato del equipo', politica: '⚖️ Criterio del equipo' }
@@ -10,6 +11,8 @@ type Respaldo = { id: string; creado_en: string; automatico: boolean; nota: stri
 // Aprendizaje continuo (reglas que la IA propone a partir de las conversaciones) y respaldos del bot (prompt + modelo + reglas)
 export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?: 'reglas' | 'respaldos'; onPromptActualizado?: () => void }) {
   const toast = useToast()
+  const { cfg, save } = useConfig()
+  const auto = cfg.aprendizaje_auto === 'si'
   const [reglas, setReglas] = useState<Regla[]>([])
   const [resp, setResp] = useState<Respaldo[]>([])
   const [nueva, setNueva] = useState('')
@@ -118,6 +121,8 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
     <>
       {parte !== 'respaldos' && <div className="card"><h2>🧠 Aprendizaje del bot</h2>
         <p className="muted">La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. También aprende de <b>cómo y qué respondes tú</b> cuando atiendes un chat: tu estilo, los datos que das y tus criterios. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</p>
+        <Switch color="verde" checked={auto} onChange={async (v) => { await save('aprendizaje_auto', v ? 'si' : 'no'); toast(v ? 'Aprendizaje automático activado: las sugerencias nuevas se activan solas' : 'Aprendizaje automático apagado: las sugerencias nuevas esperan tu aprobación', 'info') }}
+          label="Aprendizaje automático: activar solas las sugerencias nuevas (puedes desactivar cualquiera después)" />
         <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton><AsyncButton className="sec" okText="Revisadas" onClick={aprenderEquipo}>Aprender de mis respuestas</AsyncButton></div>
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Por aprobar ({pendientes.length})</h3>
         <Grupos l={pendientes} />
