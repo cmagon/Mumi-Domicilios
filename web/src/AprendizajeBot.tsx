@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { AsyncButton, Confirmar, useToast, type Confirmacion } from './ui'
 
-type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada' | 'integrada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null }
+type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada' | 'integrada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null; categoria?: string | null }
+const CAT: Record<string, string> = { estilo: '🗣 Estilo del equipo', conocimiento: '💡 Dato del equipo', politica: '⚖️ Criterio del equipo' }
 const fecha = (iso?: string | null) => (iso ? new Date(iso.length === 10 ? iso + 'T12:00:00' : iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 type Respaldo = { id: string; creado_en: string; automatico: boolean; nota: string | null; config: Record<string, string>; aprendizajes: unknown[] }
 
@@ -56,6 +57,11 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
     if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo revisar', 'err'); return false }
     toast(data.revisadas ? `${data.revisadas} conversación(es) revisada(s), ${data.reglas} regla(s) nueva(s)` : 'No hay conversaciones nuevas por revisar', 'info'); cargar()
   }
+  const aprenderEquipo = async () => {
+    const { data, error } = await supabase.functions.invoke('analizar-chats', { body: { modo: 'equipo', limite: 5 } })
+    if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo revisar', 'err'); return false }
+    toast(data.revisadas ? `${data.revisadas} conversación(es) con tu intervención revisada(s), ${data.reglas} sugerencia(s) nueva(s)` : 'No hay conversaciones nuevas donde hayas respondido', 'info'); cargar()
+  }
   const respaldar = async () => {
     const { error } = await supabase.rpc('crear_respaldo', { p_nota: 'Respaldo manual' })
     if (error) { toast(error.message, 'err'); return false }
@@ -95,7 +101,7 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
         ? <><textarea style={{ minHeight: 60 }} value={edit.texto} onChange={(e) => setEdit({ ...edit, texto: e.target.value })} />
           <label>Vigente hasta (opcional: pasada esa fecha el bot deja de aplicarla)</label><input type="date" value={edit.hasta} onChange={(e) => setEdit({ ...edit, hasta: e.target.value })} />
           <div className="row"><AsyncButton okText="Guardada" onClick={guardarEdicion}>Guardar</AsyncButton><button className="sec" onClick={() => setEdit(null)}>Cancelar</button></div></>
-        : <><div>{x.regla}</div>
+        : <><div>{x.categoria && CAT[x.categoria] && <span className="badge" style={{ marginRight: 6 }}>{CAT[x.categoria]}</span>}{x.regla}</div>
           {x.evidencia && <div className="muted">Fricción detectada: {x.evidencia}</div>}
           <div className="muted">📅 Propuesta el {fecha(x.creado_en)}{x.estado === 'activa' && x.decidido_en ? ` · activa desde ${fecha(x.decidido_en)}` : ''}{x.vigente_hasta ? ` · ${x.vigente_hasta < new Date().toLocaleDateString('en-CA') ? '⏹ venció' : 'vigente hasta'} ${fecha(x.vigente_hasta)}` : ' · sin fecha de vencimiento'}</div>
           <div className="row">
@@ -111,8 +117,8 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
   return (
     <>
       {parte !== 'respaldos' && <div className="card"><h2>🧠 Aprendizaje del bot</h2>
-        <p className="muted">La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</p>
-        <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton></div>
+        <p className="muted">La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. También aprende de <b>cómo y qué respondes tú</b> cuando atiendes un chat: tu estilo, los datos que das y tus criterios. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</p>
+        <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton><AsyncButton className="sec" okText="Revisadas" onClick={aprenderEquipo}>Aprender de mis respuestas</AsyncButton></div>
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Por aprobar ({pendientes.length})</h3>
         <Grupos l={pendientes} />
         {!pendientes.length && <p className="muted">No hay reglas propuestas. Se revisan solas unas pocas conversaciones en cada ciclo del cron.</p>}

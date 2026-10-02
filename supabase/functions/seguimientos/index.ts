@@ -9,7 +9,7 @@ import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
 import { sinNumeroPedido } from '../whatsapp-webhook/texto.ts'
 import { humanoTardo } from '../whatsapp-webhook/humano.ts'
-import { analizarSesiones, aprenderDeSesiones } from '../whatsapp-webhook/analisis.ts'
+import { analizarSesiones, aprenderDeSesiones, aprenderDelEquipo } from '../whatsapp-webhook/analisis.ts'
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -33,6 +33,7 @@ Deno.serve(async (req) => {
   if (new Date().getMinutes() % 10 < 2) {
     await analizarSesiones(sb, cfg, 3).catch(() => 0)
     await aprenderDeSesiones(sb, cfg, 2).catch(() => 0)
+    await aprenderDelEquipo(sb, cfg, 2).catch(() => 0)
   }
 
   if (cfg.seguimiento_activo === 'no') return new Response('desactivado: los recordatorios automáticos están apagados en Configuración')
