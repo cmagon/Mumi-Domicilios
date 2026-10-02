@@ -16,7 +16,7 @@ const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_nu
 
 export default function Configuracion() {
   const toast = useToast()
-  const { cfg, save } = useConfig()
+  const { cfg, save, reload } = useConfig()
   const [f, setF] = useState<Record<string, string>>({})
   const [sec, setSec] = useState<string | null>(null)
   const [sonidoOn, setSonidoOn] = useState(sonidoActivo())
@@ -253,7 +253,7 @@ export default function Configuracion() {
       <Modal abierto={sec === 'aprende'} titulo="🧠 Aprendizaje del bot" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'aprende' && (<>
-<AprendizajeBot parte="reglas" />
+<AprendizajeBot parte="reglas" onPromptActualizado={reload} />
         </>)}
       </Modal>
       <Modal abierto={sec === 'respaldos'} titulo="💾 Respaldos" onClose={() => setSec(null)} ancho={560}
