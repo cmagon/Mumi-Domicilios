@@ -360,3 +360,4 @@ header.top .salir:hover:not(:disabled) { background: #fff; color: var(--p); bord
 .citando { display: flex; align-items: center; gap: 8px; border-left: 4px solid var(--rojo, #6e140d); background: #f0f0f0; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
 .citando > div { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12px; }
 .citando span { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fila-msg { transition: transform .12s ease-out; touch-action: pan-y; }
