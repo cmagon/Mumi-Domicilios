@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { useEnVivo } from '../enVivo'
 import ChatView, { ICONO_AVISO } from '../ChatView'
 import { AsyncButton, Modal, useToast } from '../ui'
 
@@ -52,15 +53,7 @@ export default function Chats() {
     ])
     setLista((b.data ?? []) as B[]); setSes((s.data ?? []) as S[]); setGenerales(g.count ?? 0)
   }, [])
-  useEffect(() => {
-    cargar()
-    const ch = supabase.channel('bandeja')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mensajes' }, () => cargar())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => cargar())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones' }, () => cargar())
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [cargar])
+  useEnVivo('bandeja', [{ tabla: 'mensajes' }, { tabla: 'notificaciones' }, { tabla: 'conversaciones' }], cargar, 10)
 
   // En móvil, el chat abierto ocupa toda la pantalla (se esconde el encabezado)
   useEffect(() => {

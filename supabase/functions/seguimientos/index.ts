@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   if (cfg.seguimiento_activo === 'no') return new Response('desactivado: los recordatorios automáticos están apagados en Configuración')
 
   const hora = Number(new Date().toLocaleString('en-US', { timeZone: TZ, hour: 'numeric', hour12: false })) % 24
-  const ini = Number(cfg.horario_inicio || 7), fin = Number(cfg.horario_fin || 20)
+  const ini = Number(cfg.horario_inicio || 7), fin = Number(cfg.horario_fin || 21)
   if (hora < ini || hora >= fin) return new Response(`fuera de horario: son las ${hora}h en Colombia y solo se escriben recordatorios entre las ${ini}h y las ${fin}h (Configuración)`)
 
   const esperas = [Number(cfg.seguimiento_1_min || 10), Number(cfg.seguimiento_2_min || 360)]

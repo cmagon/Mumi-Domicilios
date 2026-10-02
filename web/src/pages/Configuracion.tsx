@@ -188,7 +188,7 @@ export default function Configuracion() {
           <div><label>2.º y último (minutos)</label><input type="number" min={5} value={f.seguimiento_2_min ?? '360'} onChange={(e) => set('seguimiento_2_min', e.target.value)} /></div></div>
         <div className="row">
           <div><label>Enviar desde (hora)</label><input type="number" min={0} max={23} value={f.horario_inicio ?? '7'} onChange={(e) => set('horario_inicio', e.target.value)} /></div>
-          <div><label>Hasta (hora)</label><input type="number" min={1} max={24} value={f.horario_fin ?? '20'} onChange={(e) => set('horario_fin', e.target.value)} /></div></div>
+          <div><label>Hasta (hora)</label><input type="number" min={1} max={24} value={f.horario_fin ?? '21'} onChange={(e) => set('horario_fin', e.target.value)} /></div></div>
         <p className="muted">WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</p>
       </div>
 

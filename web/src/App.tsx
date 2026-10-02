@@ -33,6 +33,7 @@ export default function App() {
     if (!esAdmin) return
     const contar = () => supabase.from('chats_bandeja').select('telefono', { count: 'exact', head: true }).or('avisos.gt.0,no_leidos.gt.0').then(({ count }) => setNoLeidos(count ?? 0))
     contar()
+    const sondeo = window.setInterval(() => { if (!document.hidden) contar() }, 15000) // respaldo si el tiempo real se cae
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission()
     const ch = supabase.channel('avisos-badge')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones' }, (p) => {
@@ -46,7 +47,7 @@ export default function App() {
         if (p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
       })
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { window.clearInterval(sondeo); supabase.removeChannel(ch) }
   }, [esAdmin])
 
   // El logo definido por el admin es también el favicon y el ícono de la app instalada

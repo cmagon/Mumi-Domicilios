@@ -5,6 +5,7 @@ import { AsyncButton, useToast } from './ui'
 import PedidosCliente from './PedidosCliente'
 import { useConfig } from './hooks'
 import QRCode from 'qrcode'
+import { useEnVivo } from './enVivo'
 import TomarPedido from './TomarPedido'
 
 type Msg = { id: string; rol: 'user' | 'assistant' | 'admin'; contenido: string; creado_en: string; media_path: string | null }
@@ -56,6 +57,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const archivo = useRef<HTMLInputElement>(null)
   const [ahora, setAhora] = useState(Date.now())
   const fin = useRef<HTMLDivElement>(null)
+  const visto = useRef('')
   const area = useRef<HTMLTextAreaElement>(null)
 
   const marcarLeido = useCallback(() => {
@@ -69,6 +71,9 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
       supabase.from('notificaciones').select('*').eq('telefono', telefono).eq('leida', false).order('creado_en', { ascending: false }),
     ])
     const lista = ((m.data ?? []) as Msg[]).reverse()
+    // Marca como leído solo cuando hay un mensaje nuevo (evita un ciclo de actualizaciones)
+    const ult = lista[lista.length - 1]?.id
+    if (ult && ult !== visto.current && !document.hidden) { visto.current = ult; marcarLeido() }
     setMsgs(lista); setConv(c.data as typeof conv); setAvisos((a.data ?? []) as Aviso[])
     const rutas = [...lista.map((x) => x.media_path), ...((a.data ?? []) as Aviso[]).map((x) => x.media_path)].filter(Boolean) as string[]
     if (rutas.length) {
@@ -77,17 +82,11 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
     }
   }, [telefono])
 
-  useEffect(() => {
-    setMsgs([]); setAvisos([]); setConv(null); setTexto(''); setVerPedidos(false)
-    cargar(); marcarLeido()
-    const ch = supabase.channel(`chat-${telefono}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes', filter: `telefono=eq.${telefono}` }, () => { cargar(); marcarLeido() })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones', filter: `telefono=eq.${telefono}` }, () => cargar())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones', filter: `telefono=eq.${telefono}` }, () => cargar())
-      .subscribe()
-    const t = setInterval(() => setAhora(Date.now()), 60000)
-    return () => { supabase.removeChannel(ch); clearInterval(t) }
-  }, [telefono, cargar, marcarLeido])
+  useEffect(() => { visto.current = ''; setMsgs([]); setAvisos([]); setConv(null); setTexto(''); setVerPedidos(false); cargar() }, [telefono]) // eslint-disable-line
+  useEffect(() => { const t = setInterval(() => setAhora(Date.now()), 60000); return () => clearInterval(t) }, [])
+  // Tiempo real: mensajes nuevos, avisos y estado del chat de este cliente, sin recargar
+  useEnVivo(`chat-${telefono}`, [{ tabla: 'mensajes', filtro: `telefono=eq.${telefono}` }, { tabla: 'notificaciones', filtro: `telefono=eq.${telefono}` }, { tabla: 'conversaciones', filtro: `telefono=eq.${telefono}` }],
+    cargar, 10)
   useEffect(() => { fin.current?.scrollIntoView({ block: 'end' }) }, [msgs.length])
 
   // Ventana de 24 h de WhatsApp
