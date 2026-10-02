@@ -15,7 +15,8 @@ import Clientes from './pages/Clientes'
 import Chats from './pages/Chats'
 import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
-import { tono } from './sonido'
+import { tono, desbloquearAudio } from './sonido'
+import { suscripcionActual } from './notificaciones'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
 
@@ -31,24 +32,36 @@ export default function App() {
   // Avisos del bot (pagos, atención humana, cosas que no pudo resolver): contador en vivo + notificación del navegador
   useEffect(() => {
     if (!esAdmin) return
+    let conPush = false // si el dispositivo tiene push, el service worker muestra la notificación del sistema
+    suscripcionActual().then((s) => { conPush = !!s }).catch(() => {})
+    desbloquearAudio()
     const contar = () => supabase.from('chats_bandeja').select('telefono', { count: 'exact', head: true }).or('avisos.gt.0,no_leidos.gt.0').then(({ count }) => setNoLeidos(count ?? 0))
     contar()
+    const onSw = (e: MessageEvent) => { if (e.data?.tipo === 'push') { contar(); tono(false) } else if (e.data?.tipo === 'abrir') window.location.assign(e.data.url || '/chats') }
+    navigator.serviceWorker?.addEventListener('message', onSw)
     const sondeo = window.setInterval(() => { if (!document.hidden) contar() }, 15000) // respaldo si el tiempo real se cae
-    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission()
     const ch = supabase.channel('avisos-badge')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones' }, (p) => {
         contar(); tono(false)
-        if ('Notification' in window && Notification.permission === 'granted') new Notification(String(p.new.titulo), { body: String(p.new.detalle ?? '') })
+        if (!conPush && 'Notification' in window && Notification.permission === 'granted') new Notification(String(p.new.titulo), { body: String(p.new.detalle ?? '') })
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => contar())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones' }, () => contar())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes' }, (p) => {
         contar(); if (p.new.rol === 'user' && p.new.contenido !== '…') tono(false)
-        if (p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
+        if (!conPush && p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
       })
       .subscribe()
-    return () => { window.clearInterval(sondeo); supabase.removeChannel(ch) }
+    return () => { window.clearInterval(sondeo); navigator.serviceWorker?.removeEventListener('message', onSw); supabase.removeChannel(ch) }
   }, [esAdmin])
+
+  // Indicador de chats por revisar: número en el título de la pestaña y en el ícono de la app instalada (barra de tareas / pantalla de inicio)
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\)\s*/, '')
+    document.title = noLeidos > 0 ? `(${noLeidos}) ${base}` : base
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+    try { if (noLeidos > 0) void nav.setAppBadge?.(noLeidos); else void nav.clearAppBadge?.() } catch { /* no soportado */ }
+  }, [noLeidos])
 
   // El logo definido por el admin es también el favicon y el ícono de la app instalada
   useEffect(() => {

@@ -7,6 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'], maximumFileSizeToCacheInBytes: 6 * 1024 * 1024 },
       manifest: {
         name: 'Mumi Delivery',
         short_name: 'Mumi',
