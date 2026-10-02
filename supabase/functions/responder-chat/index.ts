@@ -40,20 +40,22 @@ Deno.serve(async (req) => {
     return json({ ok: false, ventana_cerrada: true, error: 'Pasaron más de 24 h desde el último mensaje del cliente: WhatsApp solo permite plantillas aprobadas. Podrás responder cuando él escriba de nuevo.' })
 
   let waId: string | null | undefined
+  let despues: (() => Promise<void>) | null = null
   let transcripcion = ''
   if (aud) {
     const { data: firmada } = await sb.storage.from('comprobantes').createSignedUrl(aud, 600)
     if (!firmada?.signedUrl) return json({ ok: false, error: 'No se encontró el audio subido' })
     waId = await sendAudio(telefono, firmada.signedUrl, replyTo)
-    // Transcripción para el historial y para que el bot aprenda de lo que dice el equipo (si falla, el audio igual se envió)
-    try {
+    // La transcripción (para el historial y para que el bot aprenda) va en segundo plano: no hace esperar el envío
+    despues = async () => { try {
       const { data: c } = await sb.from('config').select('clave,valor')
       const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
       const motor = cfg.motor_audio === 'openai' ? 'openai' : 'gemini'
       const key = await apiKey(sb, cfg, motor)
       const { data: f } = await sb.storage.from('comprobantes').download(aud)
       if (key && f) transcripcion = (await transcribir(motor, key, new Uint8Array(await f.arrayBuffer()), f.type || 'audio/mpeg', cfg.modelo_ia && cfg.proveedor_ia === 'gemini' ? cfg.modelo_ia : undefined)).trim()
-    } catch (e) { console.error('transcripción del audio del equipo', e) }
+      if (transcripcion && waId) await sb.from('mensajes').update({ contenido: `🎤 Nota de voz del equipo: ${transcripcion}` }).eq('wa_id', waId)
+    } catch (e) { console.error('transcripción del audio del equipo', e) } }
   } else if (img) {
     const { data: firmada } = await sb.storage.from('comprobantes').createSignedUrl(img, 600)
     if (!firmada?.signedUrl) return json({ ok: false, error: 'No se encontró la imagen subida' })
@@ -61,13 +63,19 @@ Deno.serve(async (req) => {
   } else waId = await sendText(telefono, msg, replyTo)
   if (!waId) return json({ ok: false, error: 'WhatsApp no aceptó el mensaje. Revisa el token en los secrets o los registros de la función.' })
   const ahora = new Date().toISOString()
-  // Al responder, la persona ya leyó: se marca la palomita azul del último mensaje del cliente
-  const { data: ultU } = await sb.from('mensajes').select('wa_id').eq('telefono', telefono).eq('rol', 'user').not('wa_id', 'is', null).order('creado_en', { ascending: false }).limit(1).maybeSingle()
-  if (ultU?.wa_id) await marcarLeidoSolo(ultU.wa_id)
   const fila = { telefono, rol: 'admin', contenido: aud ? `🎤 Nota de voz del equipo${transcripcion ? ': ' + transcripcion : ''}` : (msg || '📷 Foto'), wa_id: waId, ...(aud ? { media_path: aud } : img ? { media_path: img } : {}) }
   const { error: ei } = await sb.from('mensajes').insert({ ...fila, cita })
   if (ei) await sb.from('mensajes').insert(fila) // por si la migración 0040 aún no se corrió
   // La persona toma el chat: el bot se calla (y se reactiva solo pasadas "horas_humano" h sin que escribas)
-  await sb.from('conversaciones').upsert({ telefono, humano: true, humano_desde: ahora, admin_leido_en: ahora }, { onConflict: 'telefono' })
+  const toma = sb.from('conversaciones').upsert({ telefono, humano: true, humano_desde: ahora, admin_leido_en: ahora }, { onConflict: 'telefono' })
+  // La transcripción del audio, la palomita azul del último mensaje del cliente (la persona ya leyó) y la toma del chat van en paralelo / en segundo plano
+  // deno-lint-ignore no-explicit-any
+  const dif = despues as (() => Promise<void>) | null
+  if (dif) (globalThis as any).EdgeRuntime?.waitUntil(dif())
+  const marcar = (async () => {
+    const { data: ultU } = await sb.from('mensajes').select('wa_id').eq('telefono', telefono).eq('rol', 'user').not('wa_id', 'is', null).order('creado_en', { ascending: false }).limit(1).maybeSingle()
+    if (ultU?.wa_id) await marcarLeidoSolo(ultU.wa_id)
+  })()
+  await Promise.all([toma, marcar])
   return json({ ok: true })
 })

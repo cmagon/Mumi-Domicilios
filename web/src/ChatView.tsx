@@ -54,7 +54,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   const [verPedidos, setVerPedidos] = useState(false)
   const [tomando, setTomando] = useState(false)
   const [nActivos, setNActivos] = useState(0)
-  const [audio, setAudio] = useState<{ blob: Blob; url: string } | null>(null)
+  const [enviandoAudio, setEnviandoAudio] = useState<{ id: string; url: string }[]>([])
   const [citando, setCitando] = useState<Msg | null>(null)
   const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
   const archivo = useRef<HTMLInputElement>(null)
@@ -96,7 +96,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
   // Tiempo real: mensajes nuevos, avisos y estado del chat de este cliente, sin recargar
   useEnVivo(`chat-${telefono}`, [{ tabla: 'mensajes', filtro: `telefono=eq.${telefono}` }, { tabla: 'notificaciones', filtro: `telefono=eq.${telefono}` }, { tabla: 'conversaciones', filtro: `telefono=eq.${telefono}` }],
     cargar, 10)
-  useEffect(() => { fin.current?.scrollIntoView({ block: 'end' }) }, [msgs.length])
+  useEffect(() => { fin.current?.scrollIntoView({ block: 'end' }) }, [msgs.length, enviandoAudio.length])
 
   // Ventana de 24 h de WhatsApp
   const ultCliente = [...msgs].reverse().find((m) => m.rol === 'user')
@@ -118,14 +118,21 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
     } catch { toast('No se pudo leer la imagen', 'err') }
     if (archivo.current) archivo.current.value = ''
   }
-  const enviarAudio = async () => {
-    if (!audio) return false
-    const ruta = `salientes/${telefono}/${Date.now()}.mp3`
-    const { error: eu } = await supabase.storage.from('comprobantes').upload(ruta, audio.blob, { contentType: 'audio/mpeg' })
-    if (eu) { toast(`No se pudo subir el audio: ${eu.message}`, 'err'); return false }
-    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, audio_path: ruta, responder_a: citando?.wa_id } })
-    if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo enviar el audio', 'err'); return false }
-    setAudio(null); setCitando(null); cargar()
+  // Nota de voz estilo WhatsApp: al terminar de grabar se envía sola, con una burbuja inmediata mientras sube
+  const enviarAudio = async (blob: Blob, url: string) => {
+    const idTmp = `tmp-${Date.now()}`
+    const resp = citando?.wa_id
+    setCitando(null)
+    setEnviandoAudio((l) => [...l, { id: idTmp, url }])
+    try {
+      const ruta = `salientes/${telefono}/${Date.now()}.mp3`
+      const { error: eu } = await supabase.storage.from('comprobantes').upload(ruta, blob, { contentType: 'audio/mpeg' })
+      if (eu) throw new Error(`No se pudo subir el audio: ${eu.message}`)
+      const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, audio_path: ruta, responder_a: resp } })
+      if (error || !data?.ok) throw new Error(data?.error ?? error?.message ?? 'No se pudo enviar el audio')
+      await cargar()
+    } catch (e) { toast((e as Error).message, 'err') }
+    setEnviandoAudio((l) => l.filter((x) => x.id !== idTmp))
   }
   const enviar = async () => {
     const t = texto.trim()
@@ -220,6 +227,8 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
               </div>
             </div>)
         })}
+        {enviandoAudio.map((a) => (
+          <div key={a.id} className="fila-msg der"><div className="burbuja adm"><span className="quien">Equipo</span><audio className="chat-audio" controls src={a.url} /><span className="hora">Enviando…</span></div></div>))}
         <div ref={fin} />
       </div>
 
@@ -229,11 +238,10 @@ export default function ChatView({ telefono, nombre, onBack, resumen }: { telefo
             <div className="rapidas">{RAPIDAS.map((r) => <button key={r} className="chip" onClick={() => { setTexto((t) => (t ? t + ' ' : '') + r); area.current?.focus() }}>{r}</button>)}</div>
             {citando && <div className="citando"><div><b>{citando.rol === 'user' ? 'Cliente' : citando.rol === 'admin' ? 'Equipo' : 'Bot'}</b><span>{citando.contenido.replace(/^\[.*?\]\s*/, '').slice(0, 140) || '📎 Archivo'}</span></div><button className="ghost" onClick={() => setCitando(null)} aria-label="Quitar cita">✕</button></div>}
             {foto && <div className="foto-prev"><img src={foto.url} alt="Vista previa" /><button className="ghost" onClick={() => setFoto(null)} aria-label="Quitar foto">✕</button><span className="muted">El texto se envía como pie de la foto</span></div>}
-            {audio && <div className="foto-prev"><audio controls src={audio.url} style={{ flex: 1, minWidth: 0 }} /><button className="ghost" onClick={() => setAudio(null)} aria-label="Descartar audio">✕</button><AsyncButton className="enviar" okText="" onClick={enviarAudio}>➤</AsyncButton></div>}
             <div className="compositor">
               <input ref={archivo} type="file" accept="image/*" hidden onChange={(e) => elegirFoto(e.target.files?.[0])} />
               <button className="sec adjuntar" aria-label="Adjuntar foto" onClick={() => archivo.current?.click()}>📷</button>
-              {!audio && <Grabadora onListo={(blob, url) => setAudio({ blob, url })} onError={(m) => toast(m, 'err')} />}
+              <Grabadora onListo={enviarAudio} onError={(m) => toast(m, 'err')} />
               <textarea ref={area} rows={1} placeholder="Escribe un mensaje" value={texto}
                 onChange={(e) => { setTexto(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 900) { e.preventDefault(); void enviar() } }} />
