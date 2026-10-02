@@ -6,6 +6,7 @@ import { bloqueosPorEventos } from './avisos.ts'
 import { horaHablada } from './texto.ts'
 import { pushAdmin } from './push.ts'
 import { avisoAdminWA } from './adminresumen.ts'
+import { notificarAdmins } from './notifequipo.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -417,9 +418,8 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       const motivos: Record<string, string> = { pedido_grande_evento: 'Pedido grande o evento', personalizacion: 'Personalización',
         queja_reclamo: 'Queja o reclamo', otro: 'Otro' }
       const motivo = motivos[a.motivo] ?? 'Otro'
-      for (const n of (cfg.admin_numeros ?? '').split(',').map((s) => s.replace(/\D/g, '')).filter(Boolean))
-        await notify(n, { templateEnv: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen],
-          text: `⚠️ Atención humana requerida\nCliente: ${a.nombre}\nTeléfono: ${a.telefono_contacto}\nMotivo: ${motivo}\nDetalle: ${a.resumen}\nChat: ${ctx.telefono}\n\nEl bot se reactiva solo en ${cfg.horas_humano || 12} h. Antes: reanudar ${ctx.telefono}` })
+      await notificarAdmins(sb, cfg, `⚠️ Atención humana requerida\nCliente: ${a.nombre}\nTeléfono: ${a.telefono_contacto}\nMotivo: ${motivo}\nDetalle: ${a.resumen}\nChat: ${ctx.telefono}\n\nEl bot se reactiva solo en ${cfg.horas_humano || 12} h. Antes: reanudar ${ctx.telefono}`,
+        { template: { env: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen] } }) // principal primero; si no, el secundario
       return { ok: true, instruccion: 'Avisa al cliente que en un momento le escribe alguien del equipo. No sigas respondiendo.' }
     }
   }
