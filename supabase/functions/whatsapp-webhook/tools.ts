@@ -44,10 +44,20 @@ export function cierreEntregas(franjas: string): { min: number; texto: string } 
   const h = Math.floor(min / 60), m = min % 60
   return { min, texto: horaHablada(h, m) }
 }
+// Inicio de la primera franja de entrega (ej. "14:00-16:00,16:00-18:00" → 14:00)
+export function inicioEntregas(franjas: string): { min: number } | null {
+  const ini = [...(franjas ?? '').matchAll(/(?:^|,)\s*(\d{1,2})(?::(\d{2}))?\s*-/g)].map((m) => +m[1] * 60 + (+m[2] || 0))
+  return ini.length ? { min: Math.min(...ini) } : null
+}
+// Punto de referencia del límite para pedidos de hoy: por defecto el INICIO de las entregas (config limite_pedidos_hoy = 'inicio'), o su cierre ('cierre')
+export function limiteRef(cfg: Record<string, string>): { min: number } | null {
+  return cfg.limite_pedidos_hoy === 'cierre' ? cierreEntregas(cfg.franjas_entrega ?? '') : (inicioEntregas(cfg.franjas_entrega ?? '') ?? cierreEntregas(cfg.franjas_entrega ?? ''))
+}
 // Primera fecha de entrega posible: hoy si es día de producción y aún se toman pedidos (hasta `margen` min antes del cierre); si no, la próxima producción.
 export function fechaEntregaSugerida(hoy: string, dias: string, franjas: string, margen = 60, ex?: Excepciones) {
   const cierre = cierreEntregas(franjas)
-  const hoyOk = esDiaProduccion(hoy, dias, ex) && (!cierre || minutosAhora() < cierre.min - margen)
+  const ref = limiteRef({ franjas_entrega: franjas, limite_pedidos_hoy: 'inicio' })
+  const hoyOk = esDiaProduccion(hoy, dias, ex) && (!ref || minutosAhora() < ref.min - margen)
   return { fecha: hoyOk ? hoy : proximaProduccion(hoy, dias, false, ex), cierre }
 }
 const manana = (hoy: string) => new Date(new Date(hoy + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
@@ -152,7 +162,7 @@ const minutosDe = (ms: number): number | null => {
   const p = d.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).split(':')
   return (+p[0] % 24) * 60 + +p[1]
 }
-// Un cliente cuya conversación empezó antes del límite de pedidos para hoy conserva "hoy" hasta 15 min antes del cierre de entregas (no se le cambia la oferta a mitad de la compra)
+// Un cliente cuya conversación empezó antes del límite de pedidos para hoy conserva "hoy" hasta 15 min antes de ese punto de referencia (no se le cambia la oferta a mitad de la compra)
 export function dentroDeHorario(cierre: { min: number } | null, margen: number, sesionInicio?: number, horneadoEn?: number): boolean {
   if (!cierre) return true
   const ahora = minutosAhora()
@@ -173,13 +183,13 @@ export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, stri
   const diaProd = esDiaProduccion(hoy, dias, ex)
   const { data: hor } = await sb.from('produccion_dia').select('actualizado_en').eq('fecha', hoy).order('actualizado_en', { ascending: false }).limit(1).maybeSingle()
   const horneadoEn = hor?.actualizado_en ? new Date(hor.actualizado_en).getTime() : undefined
-  const enHorario = dentroDeHorario(cierre, margen, sesionInicio, horneadoEn)
+  const enHorario = dentroDeHorario(limiteRef(cfg), margen, sesionInicio, horneadoEn)
   const puedeHoy = diaProd && horneadoHoy && enHorario
   const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
   const hoySeAcaboTodo = puedeHoy && extrasHoy === 0
   const motivoNoHoy = puedeHoy ? null
     : !diaProd ? 'hoy no es día de producción'
-    : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes del cierre de entregas)`
+    : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes de ${cfg.limite_pedidos_hoy === 'cierre' ? 'que terminen' : 'que empiecen'} las entregas)`
     : 'aún no se ha registrado el horneado de hoy'
   return { hoy, margen, cierre, filasHoy, diaProd, enHorario, puedeHoy, hoySeAcaboTodo, mismoDia: puedeHoy && !hoySeAcaboTodo, motivoNoHoy,
     proxima: proximaProduccion(hoy, dias, false, ex) }
@@ -422,8 +432,8 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
   const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
   const { data: horCP } = fecha === hoy ? await sb.from('produccion_dia').select('actualizado_en').eq('fecha', hoy).order('actualizado_en', { ascending: false }).limit(1).maybeSingle() : { data: null }
-  if (fecha === hoy && cierre && !dentroDeHorario(cierre, margen, ctx.sesionInicio, horCP?.actualizado_en ? new Date(horCP.actualizado_en).getTime() : undefined))
-    return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes del cierre de entregas); ofrece la próxima fecha de entrega` }
+  if (fecha === hoy && cierre && !dentroDeHorario(limiteRef(cfg), margen, ctx.sesionInicio, horCP?.actualizado_en ? new Date(horCP.actualizado_en).getTime() : undefined))
+    return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes de ${cfg.limite_pedidos_hoy === 'cierre' ? 'que terminen' : 'que empiecen'} las entregas); ofrece la próxima fecha de entrega` }
 
   if (a.modalidad === 'domicilio') {
     const nogo = barrioSinDomicilio(cfg, a.direccion, a.nota)

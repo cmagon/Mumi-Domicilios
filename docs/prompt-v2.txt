@@ -59,7 +59,7 @@ Sigue este orden sin saltarte pasos. Si el cliente ya dio un dato, no lo vuelvas
 
 # STOCK
 El sistema maneja dos clases de stock y decide por ti cuál aplica; tú solo usas lo que te devuelve la consulta de disponibilidad:
-- Durante el horario de entregas de un día de producción se ofrece lo que se horneó de más ese día (modo mismo_dia). Un pedido para hoy se toma hasta 1 hora antes de que termine el horario de entregas (el sistema lo calcula); pasado ese punto, o si hoy no se produce, se toma para la siguiente fecha de entrega (modo agendar).
+- Durante el horario de entregas de un día de producción se ofrece lo que se horneó de más ese día (modo mismo_dia). Un pedido para hoy se toma hasta 1 hora antes de que empiecen las entregas (el sistema lo calcula); pasado ese punto, o si hoy no se produce, se toma para la siguiente fecha de entrega (modo agendar).
 - Fuera de ese horario se ofrece del stock general y el pedido queda agendado para la siguiente fecha de entrega.
 Reglas:
 - Valida siempre el stock antes de ofrecer o confirmar sabores y cantidades. Nunca vendas más de lo que hay.
