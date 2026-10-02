@@ -6,6 +6,7 @@ import { construirProveedor } from './config.ts'
 import { sendText } from './wa.ts'
 import { barrioSinDomicilio, cargarExcepciones, esDiaProduccion, fechaBogota } from './tools.ts'
 import { horaHablada } from './texto.ts'
+import { conversarEquipo } from './equipo.ts'
 import { ejecutarCancelacion, reporteDia, vistaCancelacion } from './adminresumen.ts'
 
 const AYUDA = `Estás en modo administrador 👩‍🍳 (no te trato como cliente). Puedes escribirme o mandarme una nota de voz:
@@ -76,6 +77,7 @@ function resumen(d: Datos, r: Awaited<ReturnType<typeof resolver>>): string {
 export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, string>, from: string, texto: string): Promise<boolean> {
   const t = texto.trim()
   if (!t) return true
+  if (/^(ayuda|help|men[uú]|comandos|\?)$/i.test(t)) { await sendText(from, AYUDA); return true }
   const { data: bor } = await sb.from('admin_borradores').select('*').eq('admin_telefono', from).maybeSingle()
   const vigente = bor && Date.now() - new Date(bor.actualizado_en).getTime() < 30 * 60000
 
@@ -106,7 +108,7 @@ export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, str
       await sendText(from, `Voy a CANCELAR ${v.ped.length} pedido${v.ped.length === 1 ? '' : 's'} y avisar a cada cliente por WhatsApp${d.motivo ? ` (motivo: ${d.motivo})` : ''}:\n${v.resumen}\n\nLos que estén fuera de la ventana de 24 h no se podrán avisar y te los listaré. ¿Confirmas? Responde "sí" o "no".`)
       return true
     }
-    if (d.intencion !== 'pedido' && !vigente) { await sendText(from, AYUDA); return true }
+    if (d.intencion !== 'pedido' && !vigente) { await conversarEquipo(sb, cfg, from, t, 'admin'); return true }
     const r = await resolver(sb, cfg, d)
     const falta = !d.nombre || !d.fecha_entrega || !d.modalidad || !d.metodo_pago || !r.items.length
     if (falta || r.problemas.length) {
@@ -119,7 +121,8 @@ export async function asistenteAdmin(sb: SupabaseClient, cfg: Record<string, str
     await sendText(from, `${resumen(d, r)}\n\n¿Lo creo? Responde "sí" para confirmar, "no" para descartar o dime qué cambiar.`)
   } catch (e) {
     console.error('asistenteAdmin', e)
-    await sendText(from, 'No pude interpretar eso 🙈 ¿Me lo dices de nuevo con el nombre, los sabores, la fecha, domicilio o recoger y el pago?')
+    if (vigente) await sendText(from, 'No pude interpretar eso 🙈 ¿Me lo dices de nuevo con el nombre, los sabores, la fecha, domicilio o recoger y el pago?')
+    else await conversarEquipo(sb, cfg, from, t, 'admin')
   }
   return true
 }
