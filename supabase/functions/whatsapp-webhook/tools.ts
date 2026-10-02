@@ -153,10 +153,12 @@ const minutosDe = (ms: number): number | null => {
   return (+p[0] % 24) * 60 + +p[1]
 }
 // Un cliente cuya conversación empezó antes del límite de pedidos para hoy conserva "hoy" hasta 15 min antes del cierre de entregas (no se le cambia la oferta a mitad de la compra)
-export function dentroDeHorario(cierre: { min: number } | null, margen: number, sesionInicio?: number): boolean {
+export function dentroDeHorario(cierre: { min: number } | null, margen: number, sesionInicio?: number, horneadoEn?: number): boolean {
   if (!cierre) return true
   const ahora = minutosAhora()
   if (ahora < cierre.min - margen) return true
+  // Si el equipo acaba de registrar o subir el horneado (hace menos de 2 h), hay galletas frescas: se aceptan pedidos de hoy hasta 15 min antes del cierre
+  if (horneadoEn && Date.now() - horneadoEn < 2 * 3600 * 1000 && ahora < cierre.min - 15) return true
   const ini = sesionInicio ? minutosDe(sesionInicio) : null
   return ini != null && ini < cierre.min - margen && ahora < cierre.min - 15
 }
@@ -169,7 +171,9 @@ export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, stri
   const filasHoy = ((await sb.rpc('stock_resumen', { p_fecha: hoy })).data ?? []) as any[]
   const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
   const diaProd = esDiaProduccion(hoy, dias, ex)
-  const enHorario = dentroDeHorario(cierre, margen, sesionInicio)
+  const { data: hor } = await sb.from('produccion_dia').select('actualizado_en').eq('fecha', hoy).order('actualizado_en', { ascending: false }).limit(1).maybeSingle()
+  const horneadoEn = hor?.actualizado_en ? new Date(hor.actualizado_en).getTime() : undefined
+  const enHorario = dentroDeHorario(cierre, margen, sesionInicio, horneadoEn)
   const puedeHoy = diaProd && horneadoHoy && enHorario
   const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
   const hoySeAcaboTodo = puedeHoy && extrasHoy === 0
@@ -417,7 +421,8 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   }
   const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
   const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
-  if (fecha === hoy && cierre && !dentroDeHorario(cierre, margen, ctx.sesionInicio))
+  const { data: horCP } = fecha === hoy ? await sb.from('produccion_dia').select('actualizado_en').eq('fecha', hoy).order('actualizado_en', { ascending: false }).limit(1).maybeSingle() : { data: null }
+  if (fecha === hoy && cierre && !dentroDeHorario(cierre, margen, ctx.sesionInicio, horCP?.actualizado_en ? new Date(horCP.actualizado_en).getTime() : undefined))
     return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes del cierre de entregas); ofrece la próxima fecha de entrega` }
 
   if (a.modalidad === 'domicilio') {
