@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
@@ -17,6 +17,7 @@ import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
 import { tono, desbloquearAudio } from './sonido'
 import { suscripcionActual } from './notificaciones'
+import { numerosEquipo } from './equipo'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
 
@@ -24,6 +25,8 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [esAdmin, setEsAdmin] = useState<boolean | null>(null)
   const { cfg } = useConfig()
+  const equipoRef = useRef<string[]>([])
+  equipoRef.current = numerosEquipo(cfg)
   const loc = useLocation()
   const [noLeidos, setNoLeidos] = useState(0)
   const [menu, setMenu] = useState(false)
@@ -35,7 +38,13 @@ export default function App() {
     let conPush = false // si el dispositivo tiene push, el service worker muestra la notificación del sistema
     suscripcionActual().then((s) => { conPush = !!s }).catch(() => {})
     desbloquearAudio()
-    const contar = () => supabase.from('chats_bandeja').select('telefono', { count: 'exact', head: true }).or('avisos.gt.0,no_leidos.gt.0').then(({ count }) => setNoLeidos(count ?? 0))
+    const contar = () => {
+      // Los chats del equipo (admin, socios, domiciliario) no cuentan como clientes por revisar
+      const eq = equipoRef.current
+      let q = supabase.from('chats_bandeja').select('telefono', { count: 'exact', head: true }).or('avisos.gt.0,no_leidos.gt.0')
+      if (eq.length) q = q.not('telefono', 'in', `(${eq.join(',')})`)
+      return q.then(({ count }) => setNoLeidos(count ?? 0))
+    }
     contar()
     const onSw = (e: MessageEvent) => { if (e.data?.tipo === 'push') { contar(); tono(false) } else if (e.data?.tipo === 'abrir') window.location.assign(e.data.url || '/chats') }
     navigator.serviceWorker?.addEventListener('message', onSw)

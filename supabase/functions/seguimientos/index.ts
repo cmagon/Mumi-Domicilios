@@ -3,7 +3,7 @@
 // Se invoca por cron (Supabase → Integrations → Cron) cada 10 min con el header x-cron-secret.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { chat, compactar } from '../whatsapp-webhook/ai.ts'
-import { construirProveedor } from '../whatsapp-webhook/config.ts'
+import { construirProveedor, sinEquipo } from '../whatsapp-webhook/config.ts'
 import { registrarAlerta } from '../whatsapp-webhook/alerts.ts'
 import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
@@ -50,8 +50,9 @@ Deno.serve(async (req) => {
 
   const esperas = [Number(cfg.seguimiento_1_min || 10), Number(cfg.seguimiento_2_min || 360)]
   const ventana = new Date(Date.now() - 23 * 3600 * 1000).toISOString()
-  const { data: convs } = await sb.from('conversaciones').select('telefono,esperando,esperando_desde,seguimientos')
-    .not('esperando', 'is', null).eq('humano', false).lt('seguimientos', 2).gte('esperando_desde', ventana)
+  // Los números del equipo (admin, socios, domiciliario) nunca reciben recordatorios ni promociones
+  const { data: convs } = await sinEquipo(sb.from('conversaciones').select('telefono,esperando,esperando_desde,seguimientos')
+    .not('esperando', 'is', null).eq('humano', false).lt('seguimientos', 2).gte('esperando_desde', ventana), cfg)
 
   // Diagnóstico: ¿hay chats esperando que se descarten por humano / ventana / 2 recordatorios ya enviados?
   const { data: todos } = await sb.from('conversaciones').select('telefono,humano,seguimientos,esperando_desde').not('esperando', 'is', null)

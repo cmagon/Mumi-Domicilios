@@ -4,6 +4,8 @@ import { supabase } from '../supabase'
 import { useEnVivo } from '../enVivo'
 import ChatView, { ICONO_AVISO } from '../ChatView'
 import { AsyncButton, Modal, useToast } from '../ui'
+import { useConfig } from '../hooks'
+import { numerosEquipo } from '../equipo'
 
 type B = {
   telefono: string; nombre_wa: string | null; humano: boolean; ultimo_contenido: string | null; ultimo_rol: string | null; ultimo_en: string | null
@@ -36,7 +38,12 @@ const hora = (iso: string | null) => {
 export default function Chats() {
   const toast = useToast()
   const [params, setParams] = useSearchParams()
-  const [lista, setLista] = useState<B[]>([])
+  const { cfg } = useConfig()
+  const equipoNums = useMemo(() => numerosEquipo(cfg), [cfg])
+  const [todosChats, setLista] = useState<B[]>([])
+  // Los números del equipo (admin, socios, domiciliario) no son clientes: van aparte y no cuentan en filtros ni estadísticas
+  const lista = useMemo(() => todosChats.filter((b) => !equipoNums.includes(b.telefono)), [todosChats, equipoNums])
+  const equipo = useMemo(() => todosChats.filter((b) => equipoNums.includes(b.telefono)), [todosChats, equipoNums])
   const [ses, setSes] = useState<S[]>([])
   const [generales, setGenerales] = useState(0)
   const [filtro, setFiltro] = useState<Filtro>('todos')
@@ -83,7 +90,8 @@ export default function Chats() {
   }, [lista, q, filtro])
   const cuentaFiltro = (f: Filtro) => lista.filter((b) => { const e = estadoDe(b)
     return f === 'avisos' ? b.avisos > 0 : f === 'sin_leer' ? b.no_leidos > 0 : f === 'hum' ? b.humano || e === 'hum' : f === 'venta' ? e === 'venta' : f === 'trunc' ? e === 'trunc' : true }).length
-  const actual = lista.find((b) => b.telefono === sel)
+  const actual = todosChats.find((b) => b.telefono === sel)
+  const esEquipo = !!sel && equipoNums.includes(sel)
 
   // KPIs pequeños
   const cerradas = ses.length || 1
@@ -131,13 +139,25 @@ export default function Chats() {
               </div>)
           })}
           {!visibles.length && <p className="muted" style={{ textAlign: 'center', padding: 24 }}>No hay chats en esta vista.</p>}
+          {equipo.length > 0 && <>
+            <div className="grupo-equipo">👥 Equipo (no son clientes)</div>
+            {equipo.map((b) => (
+              <div key={b.telefono} className={`chat-item equipo ${sel === b.telefono ? 'activo' : ''}`} onClick={() => abrir(b.telefono)}>
+                <div className="avatar">👥</div>
+                <div className="centro">
+                  <div className="linea1"><b>{b.nombre_wa ?? b.telefono}</b><span className="hora-ult">{hora(b.ultimo_en)}</span></div>
+                  <div className="linea2"><span className="previa">{b.ultimo_rol === 'assistant' ? '🤖 ' : ''}{b.ultimo_contenido?.replace(/\s+/g, ' ') ?? ''}</span></div>
+                  <div className="etiquetas"><span className="mini-badge equipo">{b.telefono === numerosEquipo({ domiciliario_numero: cfg.domiciliario_numero })[0] ? '🛵 Domiciliario' : '🛡 Administración'}</span></div>
+                </div>
+              </div>))}
+          </>}
         </div>
       </div>
 
       <div className="col-chat">
         {sel === '__generales' ? <Generales onBack={() => abrir(null)} onCambio={cargar} />
-          : sel ? <ChatView key={sel} telefono={sel} nombre={actual?.nombre_wa} onBack={() => abrir(null)}
-              resumen={<BannerAnalisis key={sel} b={actual} s={ses.find((x) => x.telefono === sel)} recargar={cargar} toast={toast} />} />
+          : sel ? <ChatView key={sel} telefono={sel} nombre={actual?.nombre_wa} onBack={() => abrir(null)} equipo={esEquipo}
+              resumen={esEquipo ? undefined : <BannerAnalisis key={sel} b={actual} s={ses.find((x) => x.telefono === sel)} recargar={cargar} toast={toast} />} />
           : <div className="chat-vacio"><div style={{ fontSize: 48 }}>💬</div><p>Elige un chat para responder</p></div>}
       </div>
 
