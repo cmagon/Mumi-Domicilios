@@ -84,7 +84,9 @@ async function manejar(msg: any, nombreWA?: string) {
   const { error: dup } = await sb.from('mensajes').insert({ wa_id: msg.id, telefono: from, rol: 'user', contenido: '…' })
   if (dup) { console.log('mensaje duplicado, se ignora', msg.id); return }
 
-  await marcarLeido(msg.id)
+  // La palomita azul NO se marca al recibir: solo la pone el bot cuando va a responder (abajo), o la persona al abrir el chat en el micrositio.
+  // Así, si una persona atiende, no parece que leyó el mensaje y lo ignoró. Los números del equipo sí se marcan (los atiende el sistema).
+  if (admins.includes(from) || from === domi) await marcarLeido(msg.id)
 
   // Un administrador envía una foto/video con "foto: <sabor>" o "nuevo: Nombre, precio, descripción": va al catálogo
   if (admins.includes(from) && ['image', 'video', 'document'].includes(msg.type) && (await mediaAdmin(sb, msg, from))) {

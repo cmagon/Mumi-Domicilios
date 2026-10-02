@@ -18,6 +18,9 @@ export const marcarLeido = (messageId: string) =>
   post({ status: 'read', message_id: messageId, typing_indicator: { type: 'text' } }).catch(() => {})
 
 const ctxt = (r?: string | null) => (r ? { context: { message_id: r } } : {})
+// Solo la palomita azul (sin "escribiendo…"): se usa cuando una persona abre el chat y lee
+export const marcarLeidoSolo = (messageId: string) => post({ status: 'read', message_id: messageId }).catch(() => null)
+
 export const sendText = (to: string, body: string, replyTo?: string | null) => post({ to, type: 'text', text: { body }, ...ctxt(replyTo) })
 export const sendImage = (to: string, link: string, caption?: string, replyTo?: string | null) => post({ to, type: 'image', image: { link, caption }, ...ctxt(replyTo) })
 export const sendAudio = (to: string, link: string, replyTo?: string | null) => post({ to, type: 'audio', audio: { link }, ...ctxt(replyTo) })

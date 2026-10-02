@@ -2,7 +2,7 @@
 // se guarda en el historial como mensaje del equipo y el bot se calla en ese chat mientras la persona atiende.
 // Solo se puede escribir libremente dentro de las 24 h posteriores al último mensaje del cliente.
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { sendAudio, sendImage, sendText } from '../whatsapp-webhook/wa.ts'
+import { marcarLeidoSolo, sendAudio, sendImage, sendText } from '../whatsapp-webhook/wa.ts'
 import { transcribir } from '../whatsapp-webhook/ai.ts'
 import { apiKey } from '../whatsapp-webhook/config.ts'
 
@@ -61,6 +61,9 @@ Deno.serve(async (req) => {
   } else waId = await sendText(telefono, msg, replyTo)
   if (!waId) return json({ ok: false, error: 'WhatsApp no aceptó el mensaje. Revisa el token en los secrets o los registros de la función.' })
   const ahora = new Date().toISOString()
+  // Al responder, la persona ya leyó: se marca la palomita azul del último mensaje del cliente
+  const { data: ultU } = await sb.from('mensajes').select('wa_id').eq('telefono', telefono).eq('rol', 'user').not('wa_id', 'is', null).order('creado_en', { ascending: false }).limit(1).maybeSingle()
+  if (ultU?.wa_id) await marcarLeidoSolo(ultU.wa_id)
   const fila = { telefono, rol: 'admin', contenido: aud ? `🎤 Nota de voz del equipo${transcripcion ? ': ' + transcripcion : ''}` : (msg || '📷 Foto'), wa_id: waId, ...(aud ? { media_path: aud } : img ? { media_path: img } : {}) }
   const { error: ei } = await sb.from('mensajes').insert({ ...fila, cita })
   if (ei) await sb.from('mensajes').insert(fila) // por si la migración 0040 aún no se corrió
