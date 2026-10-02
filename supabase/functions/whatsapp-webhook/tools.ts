@@ -186,14 +186,16 @@ export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, stri
   const { data: hor } = await sb.from('produccion_dia').select('actualizado_en').eq('fecha', hoy).order('actualizado_en', { ascending: false }).limit(1).maybeSingle()
   const horneadoEn = hor?.actualizado_en ? new Date(hor.actualizado_en).getTime() : undefined
   const enHorario = dentroDeHorario(limiteRef(cfg), margen, sesionInicio, horneadoEn)
-  const puedeHoy = diaProd && horneadoHoy && enHorario
+  // Día de producción dentro del horario pero el equipo aún no registra el horneado (lo hace poco antes de hornear): se ofrece la producción de hoy como reserva por confirmar
+  const porConfirmar = diaProd && enHorario && !horneadoHoy && cfg.permitir_reserva_sin_stock !== 'no'
+  const puedeHoy = diaProd && enHorario && (horneadoHoy || porConfirmar)
   const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
-  const hoySeAcaboTodo = puedeHoy && extrasHoy === 0
+  const hoySeAcaboTodo = puedeHoy && horneadoHoy && extrasHoy === 0
   const motivoNoHoy = puedeHoy ? null
     : !diaProd ? 'hoy no es día de producción'
     : !enHorario ? `ya pasó el límite para pedidos de hoy (se toman hasta ${margen} min antes de ${cfg.limite_pedidos_hoy === 'cierre' ? 'que terminen' : 'que empiecen'} las entregas)`
-    : 'aún no se ha registrado el horneado de hoy'
-  return { hoy, margen, cierre, filasHoy, diaProd, enHorario, puedeHoy, hoySeAcaboTodo, mismoDia: puedeHoy && !hoySeAcaboTodo, motivoNoHoy,
+    : 'todavía no hay producción confirmada para hoy (el equipo la confirma poco antes de hornear)'
+  return { hoy, margen, cierre, filasHoy, diaProd, enHorario, puedeHoy, porConfirmar, hoySeAcaboTodo, mismoDia: puedeHoy && !hoySeAcaboTodo, motivoNoHoy,
     proxima: proximaProduccion(hoy, dias, false, ex) }
 }
 
@@ -231,7 +233,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
     }
     case 'consultar_stock': {
       const e = await estadoEntrega(sb, cfg, ex, ctx.sesionInicio)
-      const { hoy, cierre, filasHoy, puedeHoy, hoySeAcaboTodo, motivoNoHoy, proxima } = e
+      const { hoy, cierre, filasHoy, puedeHoy, hoySeAcaboTodo, motivoNoHoy, proxima, porConfirmar } = e
       const etiqueta = (f: string) => etiquetaEntrega(f, hoy, cierre)
       const resumen = async (f: string) => ((await sb.rpc('stock_resumen', { p_fecha: f })).data ?? []) as any[]
       const pedida: string | undefined = a.fecha
@@ -241,9 +243,9 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       if (!fecha) return { error: 'No hay días de producción configurados' }
       const filas = fecha === hoy ? filasHoy : await resumen(fecha)
       // Fecha futura = día de producción: se hornea de nuevo, así que (si las reservas lo permiten) todos los sabores se ofrecen aunque el stock registrado sea 0
-      const seProduce = !modoHoy && cfg.permitir_reserva_sin_stock !== 'no'
+      const seProduce = (!modoHoy || (fecha === hoy && porConfirmar)) && cfg.permitir_reserva_sin_stock !== 'no'
       const sabores = filas.filter((r) => r.activo).map((r) => {
-        const cant = modoHoy ? Number(r.extras_dia) : Number(r.disponible_general)
+        const cant = modoHoy ? (porConfirmar ? 0 : Number(r.extras_dia)) : Number(r.disponible_general)
         return { sabor: r.nombre as string, disponible: cant > 0 || seProduce, cantidad_disponible: cant, ...(seProduce && cant <= 0 ? { se_produce_para_esa_fecha: true } : {}) }
       })
       const faltantes = sabores.filter((x) => !x.disponible).map((x) => x.sabor)
@@ -259,9 +261,9 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       const motivoHoy = hoySeAcaboTodo ? 'hoy ya se acabaron todas las galletas' : motivoNoHoy
       return {
         hoy: `${diaSemana(hoy)} ${hoy}`, modo: modoHoy ? 'mismo_dia' : 'agendar', fecha_entrega: fecha, cuando_decirlo: etiqueta(fecha),
-        como_decirlo: modoHoy ? `Hoy tenemos disponibles estas galletas${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}`
+        como_decirlo: modoHoy && porConfirmar ? `Hoy hay producción nueva${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}; las cantidades se confirman al hornear, así que el pedido de hoy queda reservado` : modoHoy ? `Hoy tenemos disponibles estas galletas${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}`
           : `Para ${etiqueta(fecha)} tenemos ${seProduce ? 'producción nueva' : 'estas galletas disponibles'}`,
-        ...(modoHoy ? {} : { hoy_no_se_toman_pedidos: motivoHoy, regla: 'NO digas que hay galletas "para hoy": hoy no se toman pedidos. Habla siempre de la fecha_entrega.' }),
+        ...(modoHoy ? {} : { hoy_no_se_toman_pedidos: motivoHoy, regla: 'NO digas que hay galletas "para hoy": hoy no se toman pedidos. Habla siempre de la fecha_entrega. NUNCA expliques el motivo interno (horneado, registro, sistema, límites): al cliente solo dile con naturalidad que para hoy no tienes producción confirmada por ahora (o que ya cerraron los pedidos de hoy, según el caso) y ofrécele agendar para la fecha_entrega.' }),
         hoy_ya_se_acabo_todo: hoySeAcaboTodo,
         motivo_no_es_hoy: modoHoy ? null : motivoHoy, franjas_entrega: cfg.franjas_entrega,
         sabores_disponibles_para_esa_fecha: sabores.filter((x) => x.disponible),
@@ -489,7 +491,7 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const pedidas = new Map<string, number>()
   items.forEach((i) => pedidas.set(i.producto_id, (pedidas.get(i.producto_id) ?? 0) + i.cantidad))
   const filas = ((await sb.rpc('stock_resumen', { p_fecha: fecha })).data ?? []) as any[]
-  const permitirReserva = cfg.permitir_reserva_sin_stock !== 'no' && fecha > hoy
+  const permitirReserva = cfg.permitir_reserva_sin_stock !== 'no' && (fecha > hoy || (fecha === hoy && !filas.some((x) => x.horneado_registrado)))
   const faltas: string[] = []
   for (const [pid, cant] of pedidas) {
     const r = filas.find((x) => x.producto_id === pid)
