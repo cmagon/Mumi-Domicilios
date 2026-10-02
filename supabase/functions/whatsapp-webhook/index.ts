@@ -191,7 +191,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
     await marcarLeido(msg.id)
   }
 
-  const { data: hist } = await sb.from('mensajes').select('rol,contenido').eq('telefono', from).order('creado_en', { ascending: false }).limit(30)
+  const { data: hist } = await sb.from('mensajes').select('rol,contenido,creado_en').eq('telefono', from).order('creado_en', { ascending: false }).limit(30)
   const history = compactar((hist ?? []).reverse())
 
   let prov: Provider
@@ -215,18 +215,25 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
   const excep = await cargarExcepciones(sb)
   const calEspecial = excep.size ? ' Calendario especial (próximas fechas): ' + [...excep.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 12)
     .map(([f, e]) => `${f} ${e.tipo === 'cerrado' ? 'SIN producción ni entregas' + (e.nota ? ` (${e.nota})` : '') : 'producción extra' + (e.nota ? ` (${e.nota})` : '')}`).join('; ') + '.' : ''
-  const ent = await estadoEntrega(sb, cfg, excep)
+  // Inicio de la conversación en curso (mensajes seguidos sin pausas de más de 2 h)
+  let sesionInicio: number | undefined
+  { let prev = Date.now()
+    const cron = hist ?? [] // ya en orden cronológico
+    for (let i = cron.length - 1; i >= 0; i--) { const t = new Date((cron[i] as any).creado_en ?? 0).getTime(); if (!t || prev - t > 2 * 3600 * 1000) break; sesionInicio = t; prev = t } }
+  const ent = await estadoEntrega(sb, cfg, excep, sesionInicio)
   const entregaAhora = ent.mismoDia
     ? `[Entrega ahora] HOY sí se toman pedidos nuevos (entregas${ent.cierre ? ` hasta las ${ent.cierre.texto}` : ''}); los sabores y cantidades exactas salen de consultar_stock.`
     : `[Entrega ahora] HOY NO se toman pedidos nuevos (${ent.hoySeAcaboTodo ? 'ya se acabaron las galletas de hoy' : ent.motivoNoHoy}). La próxima fecha de entrega es ${ent.proxima ? etiquetaEntrega(ent.proxima, ent.hoy, ent.cierre) : 'por definir'} (${ent.proxima ?? ''}). NUNCA digas que hay galletas "para hoy"; no cambies esta versión durante la conversación.`
-  const { data: aprend } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(30)
+  let { data: aprendTodas, error: errA } = await sb.from('bot_aprendizajes').select('regla,vigente_hasta').eq('estado', 'activa').order('creado_en').limit(40)
+  if (errA) ({ data: aprendTodas } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(40)) // migración 0035 pendiente
+  const aprend = (aprendTodas ?? []).filter((x: any) => !x.vigente_hasta || x.vigente_hasta >= hoy) // las que vencieron dejan de aplicarse
   const aprendizajes = (aprend ?? []).length ? `\n\n[Aprendizajes aprobados por el equipo — aplícalos siempre]\n${(aprend ?? []).map((x: any) => '- ' + x.regla).join('\n')}` : ''
   const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}.${calEspecial}${(cfg.barrios_sin_domicilio ?? '').trim() ? ` NO hacemos domicilio en: ${cfg.barrios_sin_domicilio}.` : ''} Franjas de entrega: ${franjasHabladas(cfg.franjas_entrega ?? '')}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
     (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => ''))
-  const ctx: Ctx = { sb, cfg, telefono: from, prov, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
+  const ctx: Ctx = { sb, cfg, telefono: from, prov, sesionInicio, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'
   let respuesta = ''

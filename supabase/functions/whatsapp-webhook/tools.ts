@@ -96,7 +96,7 @@ export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, d
 export type Ctx = {
   sb: SupabaseClient; cfg: Record<string, string>; telefono: string; prov: Provider
   comprobantePath?: string | null; comprobanteOk?: boolean; referencia?: string | null; humano?: boolean
-  fotos?: { link: string; caption: string; tipo?: 'image' | 'video' }[]; enviarLocal?: boolean; pendiente?: string | null; pedidoCreado?: boolean; errorPedido?: string
+  fotos?: { link: string; caption: string; tipo?: 'image' | 'video' }[]; enviarLocal?: boolean; sesionInicio?: number; pendiente?: string | null; pedidoCreado?: boolean; errorPedido?: string
 }
 
 export const TOOLS: Tool[] = [
@@ -145,7 +145,23 @@ export const etiquetaEntrega = (f: string, hoy: string, cierre: { texto: string 
   f === hoy ? `hoy${cierre ? ` (entregas hasta las ${cierre.texto})` : ''}` : f === manana(hoy) ? 'mañana' : `el ${fechaLarga(f)}`
 
 // Estado de entrega de AHORA (una sola fuente de verdad para el bot): ¿se pueden tomar pedidos para hoy o se agenda a la próxima producción?
-export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, string>, ex?: Excepciones) {
+// Minutos del día (hora de Colombia) de un instante; null si no es de hoy
+const minutosDe = (ms: number): number | null => {
+  const d = new Date(ms)
+  if (fechaBogota(d) !== fechaBogota()) return null
+  const p = d.toLocaleTimeString('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false }).split(':')
+  return (+p[0] % 24) * 60 + +p[1]
+}
+// Un cliente cuya conversación empezó antes del límite de pedidos para hoy conserva "hoy" hasta 15 min antes del cierre de entregas (no se le cambia la oferta a mitad de la compra)
+export function dentroDeHorario(cierre: { min: number } | null, margen: number, sesionInicio?: number): boolean {
+  if (!cierre) return true
+  const ahora = minutosAhora()
+  if (ahora < cierre.min - margen) return true
+  const ini = sesionInicio ? minutosDe(sesionInicio) : null
+  return ini != null && ini < cierre.min - margen && ahora < cierre.min - 15
+}
+
+export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, string>, ex?: Excepciones, sesionInicio?: number) {
   const hoy = fechaBogota()
   const dias = cfg.dias_produccion ?? ''
   const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
@@ -153,7 +169,7 @@ export async function estadoEntrega(sb: SupabaseClient, cfg: Record<string, stri
   const filasHoy = ((await sb.rpc('stock_resumen', { p_fecha: hoy })).data ?? []) as any[]
   const horneadoHoy = filasHoy.some((r) => r.horneado_registrado)
   const diaProd = esDiaProduccion(hoy, dias, ex)
-  const enHorario = !cierre || minutosAhora() < cierre.min - margen
+  const enHorario = dentroDeHorario(cierre, margen, sesionInicio)
   const puedeHoy = diaProd && horneadoHoy && enHorario
   const extrasHoy = filasHoy.filter((r) => r.activo).reduce((t, r) => t + Number(r.extras_dia), 0)
   const hoySeAcaboTodo = puedeHoy && extrasHoy === 0
@@ -198,7 +214,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       return { ok: true, direccion: dir, instruccion: `Envía la dirección (${dir}) y dile que te mandas el pin / enlace del mapa. Aclara que por ahora solo fabricamos ahí (es nuestro punto de producción, sin atención al público); si quiere pasar por su pedido, debe haberlo hecho antes.` }
     }
     case 'consultar_stock': {
-      const e = await estadoEntrega(sb, cfg, ex)
+      const e = await estadoEntrega(sb, cfg, ex, ctx.sesionInicio)
       const { hoy, cierre, filasHoy, puedeHoy, hoySeAcaboTodo, motivoNoHoy, proxima } = e
       const etiqueta = (f: string) => etiquetaEntrega(f, hoy, cierre)
       const resumen = async (f: string) => ((await sb.rpc('stock_resumen', { p_fecha: f })).data ?? []) as any[]
@@ -401,7 +417,7 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   }
   const cierre = cierreEntregas(cfg.franjas_entrega ?? '')
   const margen = cfg.anticipacion_minima_min === '' || cfg.anticipacion_minima_min == null ? 60 : Number(cfg.anticipacion_minima_min)
-  if (fecha === hoy && cierre && minutosAhora() >= cierre.min - margen)
+  if (fecha === hoy && cierre && !dentroDeHorario(cierre, margen, ctx.sesionInicio))
     return { ok: false, error: `Ya no se toman pedidos para hoy (hasta ${margen} min antes del cierre de entregas); ofrece la próxima fecha de entrega` }
 
   if (a.modalidad === 'domicilio') {
