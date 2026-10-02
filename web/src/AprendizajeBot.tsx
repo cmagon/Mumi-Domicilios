@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { AsyncButton, Confirmar, useToast, type Confirmacion } from './ui'
 
-type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada'; creado_en: string }
+type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null }
+const fecha = (iso?: string | null) => (iso ? new Date(iso.length === 10 ? iso + 'T12:00:00' : iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }) : '')
 type Respaldo = { id: string; creado_en: string; automatico: boolean; nota: string | null; config: Record<string, string>; aprendizajes: unknown[] }
 
 // Aprendizaje continuo (reglas que la IA propone a partir de las conversaciones) y respaldos del bot (prompt + modelo + reglas)
@@ -11,7 +12,8 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
   const [reglas, setReglas] = useState<Regla[]>([])
   const [resp, setResp] = useState<Respaldo[]>([])
   const [nueva, setNueva] = useState('')
-  const [edit, setEdit] = useState<{ id: string; texto: string } | null>(null)
+  const [edit, setEdit] = useState<{ id: string; texto: string; hasta: string } | null>(null)
+  const [nuevaHasta, setNuevaHasta] = useState('')
   const [conf, setConf] = useState<Confirmacion | null>(null)
 
   const cargar = useCallback(async () => {
@@ -30,15 +32,15 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
   }
   const guardarEdicion = async () => {
     if (!edit || edit.texto.trim().length < 10) { toast('Escribe la regla completa', 'err'); return false }
-    const { error } = await supabase.from('bot_aprendizajes').update({ regla: edit.texto.trim() }).eq('id', edit.id)
+    const { error } = await supabase.from('bot_aprendizajes').update({ regla: edit.texto.trim(), vigente_hasta: edit.hasta || null }).eq('id', edit.id)
     if (error) { toast(error.message, 'err'); return false }
     setEdit(null); cargar()
   }
   const agregar = async () => {
     if (nueva.trim().length < 10) { toast('Escribe la regla completa (mín. 10 letras)', 'err'); return false }
-    const { error } = await supabase.from('bot_aprendizajes').insert({ regla: nueva.trim(), estado: 'activa', decidido_en: new Date().toISOString() })
+    const { error } = await supabase.from('bot_aprendizajes').insert({ regla: nueva.trim(), estado: 'activa', decidido_en: new Date().toISOString(), vigente_hasta: nuevaHasta || null })
     if (error) { toast(error.message, 'err'); return false }
-    setNueva(''); toast('Regla agregada y activa'); cargar()
+    setNueva(''); setNuevaHasta(''); toast('Regla agregada y activa'); cargar()
   }
   const revisar = async () => {
     const { data, error } = await supabase.functions.invoke('analizar-chats', { body: { modo: 'aprender', limite: 5 } })
@@ -68,15 +70,17 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
   const Fila = ({ x }: { x: Regla }) => (
     <div className="regla">
       {edit?.id === x.id
-        ? <><textarea style={{ minHeight: 60 }} value={edit.texto} onChange={(e) => setEdit({ id: x.id, texto: e.target.value })} />
+        ? <><textarea style={{ minHeight: 60 }} value={edit.texto} onChange={(e) => setEdit({ ...edit, texto: e.target.value })} />
+          <label>Vigente hasta (opcional: pasada esa fecha el bot deja de aplicarla)</label><input type="date" value={edit.hasta} onChange={(e) => setEdit({ ...edit, hasta: e.target.value })} />
           <div className="row"><AsyncButton okText="Guardada" onClick={guardarEdicion}>Guardar</AsyncButton><button className="sec" onClick={() => setEdit(null)}>Cancelar</button></div></>
         : <><div>{x.regla}</div>
           {x.evidencia && <div className="muted">Fricción detectada: {x.evidencia}</div>}
+          <div className="muted">📅 Propuesta el {fecha(x.creado_en)}{x.estado === 'activa' && x.decidido_en ? ` · activa desde ${fecha(x.decidido_en)}` : ''}{x.vigente_hasta ? ` · ${x.vigente_hasta < new Date().toLocaleDateString('en-CA') ? '⏹ venció' : 'vigente hasta'} ${fecha(x.vigente_hasta)}` : ' · sin fecha de vencimiento'}</div>
           <div className="row">
             {x.estado === 'pendiente'
               ? <><AsyncButton className="sm" okText="Activa" onClick={() => decidir(x, 'activa')}>✓ Activar</AsyncButton><AsyncButton className="sec sm" okText="Descartada" onClick={() => decidir(x, 'descartada')}>Descartar</AsyncButton></>
               : <AsyncButton className="sec sm" okText="Desactivada" onClick={() => decidir(x, 'descartada')}>Desactivar</AsyncButton>}
-            <button className="sec sm" onClick={() => setEdit({ id: x.id, texto: x.regla })}>Editar</button>
+            <button className="sec sm" onClick={() => setEdit({ id: x.id, texto: x.regla, hasta: x.vigente_hasta ?? '' })}>Editar</button>
           </div></>}
     </div>
   )
@@ -92,7 +96,7 @@ export default function AprendizajeBot({ parte }: { parte?: 'reglas' | 'respaldo
         <h3 style={{ fontSize: 14, margin: '12px 0 4px' }}>Activas ({activas.length})</h3>
         {activas.map((x) => <Fila key={x.id} x={x} />)}
         <label>Agregar una regla tú mismo</label>
-        <div className="row"><input placeholder="ej. Si el cliente escribe Nequii, entiende Nequi" value={nueva} onChange={(e) => setNueva(e.target.value)} /><AsyncButton okText="Agregada" onClick={agregar}>Agregar</AsyncButton></div>
+        <div className="row"><input placeholder="ej. Si el cliente escribe Nequii, entiende Nequi" value={nueva} onChange={(e) => setNueva(e.target.value)} /><input type="date" style={{ maxWidth: 170 }} title="Vigente hasta (opcional)" min={new Date().toLocaleDateString('en-CA')} value={nuevaHasta} onChange={(e) => setNuevaHasta(e.target.value)} /><AsyncButton okText="Agregada" onClick={agregar}>Agregar</AsyncButton></div>
       </div>}
 
       {parte !== 'reglas' && <div className="card"><h2>💾 Respaldos del bot</h2>
