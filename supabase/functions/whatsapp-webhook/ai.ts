@@ -178,7 +178,7 @@ export async function transcribir(motor: 'gemini' | 'openai', apiKey: string, by
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
     const d = await geminiCall({ proveedor: 'gemini', apiKey, modelo: modeloGemini }, { contents: [{ role: 'user', parts: [
       { inlineData: { mimeType: limpio, data: btoa(bin) } },
-      { text: 'Transcribe literalmente en español este audio de WhatsApp. Responde solo con la transcripción, sin comentarios.' }] }] })
+      { text: 'Transcribe literalmente en español este audio de WhatsApp. Responde solo con la transcripción, sin comentarios. NO inventes ni completes palabras: si una parte no se entiende, escribe [inaudible] en su lugar; si todo es ininteligible, responde solo [inaudible].' }] }] })
     // deno-lint-ignore no-explicit-any
     const t = (d.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? '').join('').trim()
     if (!t) throw new Error('Gemini no devolvió transcripción')
