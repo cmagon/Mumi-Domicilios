@@ -5,6 +5,7 @@ import { notify } from './wa.ts'
 import { bloqueosPorEventos } from './avisos.ts'
 import { horaHablada } from './texto.ts'
 import { pushAdmin } from './push.ts'
+import { avisoAdminWA } from './adminresumen.ts'
 
 export const TZ = 'America/Bogota'
 export const fechaBogota = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ })
@@ -102,9 +103,10 @@ async function pedidoObjetivo(sb: SupabaseClient, chat: string, numero?: number)
   if (l.length > 1) return { error: `El cliente tiene ${l.length} pedidos activos (${l.map((x) => `#${x.numero}${x.direccion ? ' a ' + x.direccion : ''}`).join('; ')}). Pregúntale a cuál se refiere y vuelve a llamar con pedido_numero.` }
   return { p: l[0] }
 }
-export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, detalle?: string, pedido_id?: string | null, telefono?: string) {
+export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, detalle?: string, pedido_id?: string | null, telefono?: string, wa = true) {
   await sb.from('notificaciones').insert({ tipo, titulo, detalle: detalle ?? null, pedido_id: pedido_id ?? null, telefono: telefono ?? null })
   await pushAdmin(sb, titulo, detalle ?? '', { tag: 'aviso', url: '/chats' })
+  if (wa) await avisoAdminWA(sb, titulo, detalle, telefono) // también por WhatsApp si la ventana del admin está abierta
 }
 
 export type Ctx = {
@@ -409,7 +411,7 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         return { ok: false, error: 'Faltan datos: pide al cliente su nombre completo, teléfono de contacto y qué necesita, y vuelve a llamar.' }
       await sb.from('conversaciones').upsert({ telefono: ctx.telefono, humano: true, humano_desde: new Date().toISOString(), actualizado_en: new Date().toISOString() })
       ctx.humano = true
-      await avisar(sb, a.motivo === 'pedido_grande_evento' ? 'pedido_grande' : 'atencion', `Atención humana: ${a.nombre}`, `${a.telefono_contacto} · ${a.motivo}: ${a.resumen}`, null, ctx.telefono)
+      await avisar(sb, a.motivo === 'pedido_grande_evento' ? 'pedido_grande' : 'atencion', `Atención humana: ${a.nombre}`, `${a.telefono_contacto} · ${a.motivo}: ${a.resumen}`, null, ctx.telefono, false) // el aviso por WhatsApp a los admins ya se envía abajo
       const motivos: Record<string, string> = { pedido_grande_evento: 'Pedido grande o evento', personalizacion: 'Personalización',
         queja_reclamo: 'Queja o reclamo', otro: 'Otro' }
       const motivo = motivos[a.motivo] ?? 'Otro'

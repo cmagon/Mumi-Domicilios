@@ -83,6 +83,24 @@ export async function ejecutarCancelacion(sb: SupabaseClient, fecha: string, mot
     (sinCanal.length ? `\n\n⚠️ NO pude avisar a:\n${sinCanal.map((x) => '• ' + x).join('\n')}\nEscríbeles tú por otro medio.` : '')
 }
 
+// ---- Avisos al WhatsApp del admin aprovechando su ventana de 24 h abierta ----
+// Cada aviso nuevo (pago, comprobante, atención, cambio…) se le envía también por WhatsApp si él escribió al bot en las últimas 24 h
+// (así la "puerta" siempre abierta sirve de notificación). Si la ventana está cerrada, queda el aviso del micrositio y la notificación push.
+export async function avisoAdminWA(sb: SupabaseClient, titulo: string, detalle?: string | null, chat?: string | null): Promise<void> {
+  try {
+    const { data: c } = await sb.from('config').select('clave,valor').in('clave', ['admin_numeros', 'avisos_whatsapp_admin'])
+    const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
+    if (cfg.avisos_whatsapp_admin === 'no') return
+    const admins = (cfg.admin_numeros ?? '').split(',').map((x) => x.replace(/\D/g, '')).filter(Boolean)
+    for (const tel of admins) {
+      if (tel === chat) continue
+      const { data: ult } = await sb.from('mensajes').select('creado_en').eq('telefono', tel).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+      if (!ult || Date.now() - new Date(ult.creado_en).getTime() > 23.5 * 3600 * 1000) continue // ventana cerrada
+      await sendText(tel, `🔔 ${titulo}${detalle ? `\n${String(detalle).slice(0, 400)}` : ''}${chat ? `\n💬 Chat del cliente: ${chat}` : ''}\n\nLo ves también en el micrositio.`)
+    }
+  } catch (e) { console.error('avisoAdminWA', e) }
+}
+
 // ---- Resúmenes automáticos al admin (cron) ----
 const claveEstado = (tel: string) => `admin_resumen_${tel}`
 const horaCO = () => { const d = new Date(); const p = d.toLocaleTimeString('en-GB', { timeZone: 'America/Bogota', hour: '2-digit', minute: '2-digit', hour12: false }).split(':'); return { h: +p[0] % 24, m: +p[1] } }
