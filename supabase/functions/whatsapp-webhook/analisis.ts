@@ -96,3 +96,43 @@ export async function extraerPedido(sb: SupabaseClient, cfg: Record<string, stri
   const j = out.match(/\{[\s\S]*\}/)
   return j ? JSON.parse(j[0]) : {}
 }
+
+const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repostería por WhatsApp). Lee una conversación donde una PERSONA del equipo ("Equipo") respondió al cliente (a veces tomó el chat que llevaba el bot). Extrae lo que el BOT debería aprender de la persona. Responde SOLO un JSON: {"reglas":[{"tipo":"estilo"|"conocimiento"|"politica","texto":"..."}]}
+- "estilo": cómo habla la persona (tono, saludos, muletillas, nivel de formalidad, uso de emojis, longitud) → instrucción en imperativo para imitarla, con un ejemplo corto entre comillas si ayuda.
+- "conocimiento": datos concretos que la persona dio y que el bot no sabía (ingredientes, ubicación, tiempos, cómo se hace algo) → "Si preguntan X, responde: …". No incluyas precios si pueden cambiar, ni datos personales.
+- "politica": decisiones o excepciones del equipo (qué hace ante una queja, un cambio, un pedido especial).
+Reglas: máx. 4 elementos, cada texto de máx. 240 caracteres, generales (sirven para otros clientes), sin nombres ni teléfonos. No repitas las reglas existentes (te las paso). Si no hay nada útil: {"reglas":[]}.`
+
+// Aprende de cómo y qué responde el equipo (humano): estilo, conocimiento y políticas. Quedan como reglas "pendientes" para aprobar.
+export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, string>, limite = 3): Promise<{ revisadas: number; reglas: number }> {
+  const { data: ses } = await sb.from('chat_sesiones').select('telefono,inicio,fin').order('fin', { ascending: false }).limit(60)
+  if (!ses?.length) return { revisadas: 0, reglas: 0 }
+  const { data: hechas } = await sb.from('chats_revision').select('telefono,sesion_inicio,equipo_revisado_en').in('telefono', [...new Set(ses.map((x) => x.telefono))])
+  const ya = new Set((hechas ?? []).filter((h: any) => h.equipo_revisado_en).map((h: any) => `${h.telefono}|${new Date(h.sesion_inicio).getTime()}`))
+  const { data: exist } = await sb.from('bot_aprendizajes').select('regla').neq('estado', 'descartada').limit(80)
+  const existentes = (exist ?? []).map((x) => x.regla as string)
+  const vistas = new Set(existentes.map(norm))
+  const prov = await construirProveedor(sb, cfg)
+  let revisadas = 0, reglas = 0
+  for (const s of ses) {
+    if (revisadas >= limite) break
+    if (ya.has(`${s.telefono}|${new Date(s.inicio).getTime()}`)) continue
+    if (Date.now() - new Date(s.fin).getTime() < 3600 * 1000) continue // la conversación ya cerró
+    const { data: msgs } = await sb.from('mensajes').select('rol,contenido').eq('telefono', s.telefono).gte('creado_en', s.inicio).lte('creado_en', s.fin).order('creado_en').limit(100)
+    if (!(msgs ?? []).some((m) => m.rol === 'admin')) continue // sin intervención humana: nada que aprender del equipo
+    try {
+      const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
+      const out = await chat(prov, SISTEMA_EQUIPO, [{ role: 'user', content: `Reglas que ya existen:\n${existentes.map((r) => '- ' + r).join('\n') || '(ninguna)'}\n\nConversación:\n${texto}` }], [], async () => ({}))
+      const j = out.match(/\{[\s\S]*\}/)
+      if (j) for (const r of (JSON.parse(j[0]).reglas ?? []).slice(0, 4)) {
+        const t = String(r.texto ?? '').trim().slice(0, 260)
+        if (t.length < 15 || vistas.has(norm(t))) continue
+        vistas.add(norm(t)); reglas++
+        await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo', origen_telefono: s.telefono, estado: 'pendiente' })
+      }
+      await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, equipo_revisado_en: new Date().toISOString() }, { onConflict: 'telefono,sesion_inicio' })
+      revisadas++
+    } catch (e) { console.error('aprenderDelEquipo', e) }
+  }
+  return { revisadas, reglas }
+}
