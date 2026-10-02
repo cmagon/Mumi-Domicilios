@@ -1,0 +1,6 @@
+-- Prompt v4.2: la disponibilidad cambia (se hornea de más); siempre volver a consultar.
+-- Es un cambio puntual: inserta la regla antes de "# INFORMACIÓN DE LOS PRODUCTOS" sin reemplazar el resto del prompt (conserva tus ediciones y las reglas integradas).
+-- El trigger de config guarda un respaldo automático del prompt anterior.
+update public.config
+   set valor = replace(valor, E'# INFORMACIÓN DE LOS PRODUCTOS', $r$- LA DISPONIBILIDAD CAMBIA: el equipo puede hornear de más o registrar más producción en cualquier momento del día, así que "se acabó" nunca es definitivo. No des por cierto lo que dijiste antes sobre qué hay o no hay: cada vez que el cliente pregunte por sabores, cantidades o "para hoy", o vaya a confirmar un pedido, consulta de nuevo la disponibilidad (consultar_stock). Si ahora hay galletas para hoy (aunque antes dijeras que no), dilo con alegría ("¡Buenas noticias, justo salieron más del horno! 🍪") y ofrécelas; la línea [Entrega ahora] del contexto manda sobre tus mensajes anteriores. Si un cliente quedó esperando por algo agotado, ofrécele lo nuevo que haya.$r$ || E'\n\n# INFORMACIÓN DE LOS PRODUCTOS')
+ where clave = 'system_prompt' and position('LA DISPONIBILIDAD CAMBIA' in valor) = 0 and position('# INFORMACIÓN DE LOS PRODUCTOS' in valor) > 0;
