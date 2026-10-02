@@ -9,6 +9,7 @@ import { pushAdmin } from './push.ts'
 import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { mediaAdmin } from './adminmedia.ts'
 import { asistenteAdmin } from './adminpedido.ts'
+import { conversarEquipo } from './equipo.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
 import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, ventanaEntregas, type Ctx } from './tools.ts'
@@ -69,6 +70,30 @@ async function botonDomiciliario(id: string, from: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// Equipo (administradores, socios y domiciliario): jamás se trata como cliente. Texto y notas de voz van a su asistente interno; lo demás se ignora con cortesía.
+async function manejarEquipo(msg: any, from: string, cfg: Record<string, string>, esAdmin: boolean) {
+  let texto = ''
+  if (msg.type === 'text') texto = msg.text.body
+  else if (msg.type === 'audio') {
+    const motor = cfg.motor_audio === 'openai' ? 'openai' : 'gemini'
+    const key = await apiKey(sb, cfg, motor)
+    if (!key) { await sendText(from, 'No puedo escuchar audios porque falta la API key de transcripción. ¿Me lo escribes? 🙏'); return }
+    try {
+      const { bytes, mime } = await downloadMedia(msg.audio.id)
+      texto = (await transcribir(motor, key, bytes, mime, cfg.modelo_ia && cfg.proveedor_ia === 'gemini' ? cfg.modelo_ia : undefined)).trim()
+    } catch (e) { console.error('audio del equipo', e); await sendText(from, 'No pude escuchar el audio, ¿me lo escribes? 🙏'); return }
+    if (!texto || /^\W*\[?inaudible\]?\W*$/i.test(texto)) { await sendText(from, 'No alcancé a escuchar bien el audio 🙏 ¿me lo repites?'); return }
+  } else if (msg.type === 'location') texto = `[Ubicación compartida: lat ${msg.location?.latitude}, lng ${msg.location?.longitude}${msg.location?.name ? ', ' + msg.location.name : ''}]`
+  else if (['image', 'video', 'document'].includes(msg.type)) {
+    await sendText(from, esAdmin ? 'Recibí el archivo 📎 pero no es una foto para el catálogo. Para subir una foto o video escribe en el pie: "foto: Cacao" (producto existente) o "nuevo: Nombre, precio, descripción".' : 'Recibí tu archivo 📎. Si necesitas algo, escríbeme.')
+    return
+  } else return // stickers, reacciones, etc.: sin respuesta
+  await sb.from('mensajes').update({ contenido: texto }).eq('wa_id', msg.id)
+  if (esAdmin) { if (!(await comandoAdmin(from, texto, cfg)) && !(await comandoAviso(sb, cfg, from, texto))) await asistenteAdmin(sb, cfg, from, texto); return }
+  if (await comandoDomiciliario(from, texto)) return
+  await conversarEquipo(sb, cfg, from, texto, 'domiciliario')
+}
+
 async function manejar(msg: any, nombreWA?: string) {
   const from: string = msg.from
   console.log('mensaje recibido', from, msg.type)
@@ -93,6 +118,9 @@ async function manejar(msg: any, nombreWA?: string) {
     await sb.from('mensajes').update({ contenido: '[El administrador envió un archivo al catálogo]' }).eq('wa_id', msg.id)
     return
   }
+
+  // Equipo: nunca entra al flujo de clientes (ni comprobantes, ni seguimientos, ni notificaciones)
+  if (admins.includes(from) || from === domi) { await manejarEquipo(msg, from, cfg, admins.includes(from)); return }
 
   let texto = ''
   let comprobantePath: string | null = null
@@ -158,9 +186,6 @@ async function manejar(msg: any, nombreWA?: string) {
   // El nombre del perfil va aparte: si la columna aún no existe, no afecta lo demás
   if (nombreWA) await sb.from('conversaciones').update({ nombre_wa: nombreWA }).eq('telefono', from)
 
-  // El número de un administrador NUNCA se trata como cliente: comandos, pedidos dictados o la ayuda
-  if (admins.includes(from)) { if (!(await comandoAdmin(from, texto, cfg)) && !(await comandoAviso(sb, cfg, from, texto))) await asistenteAdmin(sb, cfg, from, texto); return }
-  if (from === domi && (await comandoDomiciliario(from, texto))) return
 
   const { data: conv } = await sb.from('conversaciones').select('humano,humano_desde,ultimo_comprobante').eq('telefono', from).maybeSingle()
   let retomado = false
