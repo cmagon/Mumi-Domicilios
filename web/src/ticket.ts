@@ -27,5 +27,10 @@ export async function imprimirTickets(pedidos: Pedido[]) {
     body{font-family:monospace;width:260px;font-size:11px;line-height:1.25;margin:0} p,ul{margin:3px 0} h3{margin:2px 0;font-size:15px} ul{padding-left:14px} .t{page-break-after:always;padding:4px}
     .big{font-size:12px;font-weight:bold;border:1.5px solid #000;padding:3px} .nota{font-weight:bold;font-size:12px} .entrega{font-weight:bold;font-size:13px;border:1.5px solid #000;padding:3px}
     </style></head><body>${html}</body></html>`)
-  w.document.close(); w.focus(); w.print()
+  w.document.close(); w.focus()
+  // Espera a que los QR (imágenes) terminen de cargar antes de imprimir; si no, salen en blanco
+  const imgs = Array.from(w.document.images)
+  const listo = Promise.all(imgs.map((i) => (i.complete ? Promise.resolve() : new Promise<void>((ok) => { i.onload = i.onerror = () => ok() }))))
+  await Promise.race([listo, new Promise<void>((ok) => setTimeout(ok, 3000))])
+  w.print()
 }
