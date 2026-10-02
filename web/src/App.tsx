@@ -13,6 +13,7 @@ import PedidoManual from './pages/PedidoManual'
 import Kpis from './pages/Kpis'
 import Clientes from './pages/Clientes'
 import Chats from './pages/Chats'
+import Campanas from './pages/Campanas'
 import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
 import { tono, desbloquearAudio } from './sonido'
@@ -122,7 +123,7 @@ export default function App() {
   )
 
   const tabs: [string, string, string][] = [['/chats', '💬', 'Chats'], ['/pedidos', '📋', 'Pedidos'], ['/', '🔥', 'Producción'], ['/manual', '➕', 'Pedido manual'],
-    ['/clientes', '👥', 'Clientes'], ['/catalogo', '🧁', 'Catálogo'], ['/tarifas', '🛵', 'Tarifas'], ['/kpis', '📈', 'KPIs'], ['/config', '⚙️', 'Configuración']]
+    ['/clientes', '👥', 'Clientes'], ['/catalogo', '🧁', 'Catálogo'], ['/campanas', '📣', 'Campañas'], ['/tarifas', '🛵', 'Tarifas'], ['/kpis', '📈', 'KPIs'], ['/config', '⚙️', 'Configuración']]
   const enChats = loc.pathname === '/chats'
   return (
     <ToastProvider>
@@ -151,6 +152,7 @@ export default function App() {
           <Route path="/pedidos" element={<Pedidos />} />
           <Route path="/manual" element={<PedidoManual />} />
           <Route path="/catalogo" element={<Catalogo />} />
+          <Route path="/campanas" element={<Campanas />} />
           <Route path="/tarifas" element={<Tarifas />} />
           <Route path="/config" element={<Configuracion />} />
           <Route path="/kpis" element={<Kpis />} />

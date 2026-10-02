@@ -366,3 +366,7 @@ header.top .salir:hover:not(:disabled) { background: #fff; color: var(--p); bord
 .grupo-equipo { padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--mut); background: rgba(0, 0, 0, .05); position: sticky; top: 0; }
 .chat-item.equipo { background: rgba(110, 20, 13, .05); border-left: 3px solid #6e140d; }
 .mini-badge.equipo { background: #ece3f5; color: #4b2a78; }
+
+/* Vista previa de una campaña (estilo WhatsApp) */
+.vista-previa-wa { background: #efeae2; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.boton-wa { background: #fff; color: #027eb5; text-align: center; border-radius: 8px; padding: 8px; width: 280px; max-width: 100%; font-size: 14px; box-shadow: 0 1px 1px rgba(0, 0, 0, .1); }
