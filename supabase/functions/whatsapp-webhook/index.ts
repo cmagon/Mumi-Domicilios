@@ -108,6 +108,8 @@ async function manejar(msg: any, nombreWA?: string) {
       try {
         const { bytes, mime } = await downloadMedia(msg.audio.id)
         texto = await transcribir(motor, key, bytes, mime, cfg.modelo_ia && cfg.proveedor_ia === 'gemini' ? cfg.modelo_ia : undefined)
+        if (/^\W*\[?inaudible\]?\W*$/i.test(texto.trim())) { await sendText(from, 'No alcancé a escuchar bien tu audio 🙏 ¿me lo repites o me lo escribes?'); return }
+        if (/inaudible/i.test(texto)) texto = `[Nota de voz con partes que no se entendieron; no supongas lo que falta: pregúntaselo] ${texto}`
       } catch (e) {
         await registrarAlerta(sb, cfg, 'audio', String(e))
         await sendText(from, 'No pude escuchar tu audio, ¿me lo escribes? 🙏'); return
@@ -232,7 +234,8 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
   if (errA) ({ data: aprendTodas } = await sb.from('bot_aprendizajes').select('regla').eq('estado', 'activa').order('creado_en').limit(40)) // migración 0035 pendiente
   const aprend = (aprendTodas ?? []).filter((x: any) => !x.vigente_hasta || x.vigente_hasta >= hoy) // las que vencieron dejan de aplicarse
   const aprendizajes = (aprend ?? []).length ? `\n\n[Aprendizajes aprobados por el equipo — aplícalos siempre con CUALQUIER cliente (son globales, no de un cliente); si implican cifras, no las des: avisa al equipo]\n${(aprend ?? []).map((x: any) => '- ' + x.regla).join('\n')}` : ''
-  const system = `${cfg.system_prompt}${aprendizajes}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
+  const veracidad = '\n\n[Veracidad] No afirmes ingredientes, alérgenos, composición, procesos ni promesas que no estén escritos en el catálogo (descripcion/detalles) o en tus instrucciones; si preguntan "¿lleva X?" y no consta, di que lo confirma una persona del equipo (avisar_equipo) — NUNCA contestes "sí" por complacencia ni repitas como cierto algo que el cliente sugiere. Los audios se transcriben automáticamente y pueden tener errores: si algo suena raro o fuera de contexto, pídele que lo confirme en lugar de asumirlo.'
+  const system = `${cfg.system_prompt}${aprendizajes}${veracidad}\n\n[Contexto del sistema] ${entregaAhora}\nHoy es ${diaSemana(hoy)} ${hoy}, son las ${hora} (hora de Colombia). ` +
     `Días de producción: ${cfg.dias_produccion}.${calEspecial}${(cfg.barrios_sin_domicilio ?? '').trim() ? ` NO hacemos domicilio en: ${cfg.barrios_sin_domicilio}.` : ''} Franjas de entrega: ${franjasHabladas(cfg.franjas_entrega ?? '')}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
