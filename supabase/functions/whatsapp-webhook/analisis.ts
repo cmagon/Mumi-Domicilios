@@ -38,11 +38,13 @@ export async function analizarSesiones(sb: SupabaseClient, cfg: Record<string, s
 }
 
 const SISTEMA_APRENDER = `Eres el coach del bot de ventas de Mumi (galletas por WhatsApp). Lee la conversación entre el Cliente, el Bot y el Equipo y detecta fricciones atribuibles al BOT: repetir información o preguntas, responder varias veces a mensajes seguidos, contradecirse (decir que hay galletas y luego que no), insistir en algo que el cliente ya resolvió, ignorar lo que dijo el cliente, pedir datos ya dados, mensajes confusos o no entender jerga y errores de escritura.
-Responde SOLO un JSON: {"calidad":1-5,"fricciones":["..."],"reglas":["..."]}
-"reglas" son de 0 a 3 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. El aprendizaje es GLOBAL (no por cliente): generaliza. NUNCA incluyas datos personales, nombres, teléfonos ni precios o cifras exactas. Sé MUY selectivo: propón solo reglas realmente nuevas; NO repitas ni reformules nada que ya esté en el prompt del bot ni en las reglas registradas o descartadas (te los paso). Si dudas, no propongas. Si no hubo fricción: calidad 5 y listas vacías.`
+Responde SOLO un JSON: {"calidad":1-5,"fricciones":["..."],"reglas":[{"texto":"...","simple":true|false}]}
+"reglas" son de 0 a 2 instrucciones breves, generales y accionables, en imperativo y de máx. 200 caracteres, que evitarían esas fricciones con cualquier cliente. El aprendizaje es GLOBAL (no por cliente): generaliza. NUNCA incluyas datos personales, nombres, teléfonos ni precios o cifras exactas. Sé MUY selectivo: propón solo reglas realmente nuevas; NO repitas ni reformules nada que ya esté en el prompt del bot ni en las reglas registradas o descartadas (te los paso). Si dudas, no propongas. "simple" = true solo si es una mejora sencilla de FORMA (tono, saludos, muletillas, no repetir, orden o longitud de la respuesta) que no cambia datos, precios, políticas ni promesas; si toca políticas, precios, descuentos, excepciones, tiempos o datos del negocio: false. Si no hubo fricción: calidad 5 y listas vacías.`
 
 // Con "aprendizaje automático" activado, las sugerencias nuevas se activan solas; si no, quedan por aprobar
-const estadoNuevo = (cfg: Record<string, string>) => cfg.aprendizaje_auto === 'si' ? { estado: 'activa', decidido_en: new Date().toISOString() } : { estado: 'pendiente' }
+// Mejoras sencillas (de forma/expresión) se integran solas; lo complejo (políticas, precios, datos) queda pendiente para que el admin lo apruebe (resumen por WhatsApp al final del día).
+// Con el interruptor "aprendizaje automático" activado, todo se integra solo.
+const estadoNuevo = (cfg: Record<string, string>, simple = false) => cfg.aprendizaje_auto === 'si' || simple ? { estado: 'activa', decidido_en: new Date().toISOString() } : { estado: 'pendiente' }
 // Palabras significativas de una regla; sirve para detectar casi-duplicados (no solo textos idénticos)
 const palabras = (t: string) => new Set(norm(t).split(' ').filter((w) => w.length > 3))
 const parecida = (a: string, existentes: Set<string>[]) => { const x = palabras(a); if (x.size < 3) return false; return existentes.some((y) => { let n = 0; x.forEach((w) => { if (y.has(w)) n++ }); return n / Math.min(x.size, y.size) >= 0.6 }) }
@@ -79,11 +81,12 @@ export async function aprenderDeSesiones(sb: SupabaseClient, cfg: Record<string,
       if (!j) continue
       const r = JSON.parse(j[0])
       const fricciones = (Array.isArray(r.fricciones) ? r.fricciones : []).map((x: unknown) => String(x).slice(0, 200)).slice(0, 5)
-      for (const regla of (Array.isArray(r.reglas) ? r.reglas : []).slice(0, 3)) {
-        const t = String(regla).trim().slice(0, 240)
+      for (const regla of (Array.isArray(r.reglas) ? r.reglas : []).slice(0, 2)) {
+        const simple = typeof regla === 'object' && regla?.simple === true
+        const t = String(typeof regla === 'object' ? regla?.texto ?? '' : regla).trim().slice(0, 240)
         if (t.length < 15 || vistas.has(norm(t)) || parecida(t, pal)) continue
         vistas.add(norm(t)); pal.push(palabras(t)); reglas++
-        await sb.from('bot_aprendizajes').insert({ regla: t, evidencia: ((fricciones.join(' · ') || '') + (cfg.aprendizaje_auto === 'si' ? ' · activada automáticamente' : '')) || null, origen_telefono: s.telefono, ...estadoNuevo(cfg) })
+        await sb.from('bot_aprendizajes').insert({ regla: t, evidencia: ((fricciones.join(' · ') || '') + (cfg.aprendizaje_auto === 'si' || simple ? ' · activada automáticamente' : '')) || null, origen_telefono: s.telefono, ...estadoNuevo(cfg, simple) })
       }
       await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, calidad: Math.min(5, Math.max(1, Number(r.calidad) || 3)), fricciones }, { onConflict: 'telefono,sesion_inicio' })
       revisadas++
@@ -109,11 +112,11 @@ export async function extraerPedido(sb: SupabaseClient, cfg: Record<string, stri
   return j ? JSON.parse(j[0]) : {}
 }
 
-const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repostería por WhatsApp). Lee una conversación donde una PERSONA del equipo ("Equipo") respondió al cliente (a veces tomó el chat que llevaba el bot). Extrae lo que el BOT debería aprender de la persona. Responde SOLO un JSON: {"reglas":[{"tipo":"estilo"|"conocimiento"|"politica","texto":"..."}]}
+const SISTEMA_EQUIPO = `Eres el coach del bot de ventas de Mumi (galletas/repostería por WhatsApp). Lee una conversación donde una PERSONA del equipo ("Equipo") respondió al cliente (a veces tomó el chat que llevaba el bot). Extrae lo que el BOT debería aprender de la persona. Responde SOLO un JSON: {"reglas":[{"tipo":"estilo"|"conocimiento"|"politica","texto":"...","simple":true|false}]}
 - "estilo": cómo habla la persona (tono, saludos, muletillas, nivel de formalidad, uso de emojis, longitud) → instrucción en imperativo para imitarla, con un ejemplo corto entre comillas si ayuda.
 - "conocimiento": datos concretos que la persona dio y que el bot no sabía (ingredientes, ubicación, tiempos, cómo se hace algo) → "Si preguntan X, responde: …". No incluyas precios si pueden cambiar, ni datos personales.
 - "politica": decisiones o excepciones del equipo (qué hace ante una queja, un cambio, un pedido especial, p. ej. "se puede conceder descuento por compras grandes"). El aprendizaje es GLOBAL: lo acordado con un cliente aplica a otros que pregunten lo mismo; redáctalo como criterio general SIN cantidades, porcentajes ni precios exactos (di "se puede estudiar un descuento" y que el equipo confirma la cifra).
-Reglas: máx. 4 elementos, cada texto de máx. 240 caracteres, generales (sirven para otros clientes), sin nombres ni teléfonos. Sé MUY selectivo: solo lo realmente nuevo; NO repitas ni reformules nada que ya esté en el prompt del bot ni en las reglas registradas o descartadas (te los paso). Si dudas, devuelve []. Si no hay nada útil: {"reglas":[]}.`
+"simple" = true solo para mejoras sencillas de FORMA (cómo se expresa: tono, saludos, muletillas, emojis, longitud, orden); siempre false si tocan políticas, precios, descuentos, excepciones, tiempos, ingredientes o datos del negocio. Reglas: máx. 3 elementos, cada texto de máx. 240 caracteres, generales (sirven para otros clientes), sin nombres ni teléfonos. Sé MUY selectivo: solo lo realmente nuevo; NO repitas ni reformules nada que ya esté en el prompt del bot ni en las reglas registradas o descartadas (te los paso). Si dudas, devuelve []. Si no hay nada útil: {"reglas":[]}.`
 
 // Aprende de cómo y qué responde el equipo (humano): estilo, conocimiento y políticas. Quedan como reglas "pendientes" para aprobar.
 export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, string>, limite = 3): Promise<{ revisadas: number; reglas: number }> {
@@ -135,11 +138,11 @@ export async function aprenderDelEquipo(sb: SupabaseClient, cfg: Record<string, 
       const texto = (msgs ?? []).map((m) => `${m.rol === 'user' ? 'Cliente' : m.rol === 'admin' ? 'Equipo' : 'Bot'}: ${String(m.contenido).slice(0, 300)}`).join('\n')
       const out = await chat(prov, SISTEMA_EQUIPO, [{ role: 'user', content: `${k.contexto}\n\nConversación:\n${texto}` }], [], async () => ({}))
       const j = out.match(/\{[\s\S]*\}/)
-      if (j) for (const r of (JSON.parse(j[0]).reglas ?? []).slice(0, 4)) {
+      if (j) for (const r of (JSON.parse(j[0]).reglas ?? []).slice(0, 3)) {
         const t = String(r.texto ?? '').trim().slice(0, 260)
         if (t.length < 15 || vistas.has(norm(t)) || parecida(t, pal)) continue
         vistas.add(norm(t)); pal.push(palabras(t)); reglas++
-        await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo' + (cfg.aprendizaje_auto === 'si' ? ' · activada automáticamente' : ''), origen_telefono: s.telefono, ...estadoNuevo(cfg) })
+        await sb.from('bot_aprendizajes').insert({ regla: t, categoria: ['estilo', 'conocimiento', 'politica'].includes(r.tipo) ? r.tipo : 'estilo', evidencia: 'Aprendido de cómo respondió el equipo' + (cfg.aprendizaje_auto === 'si' || (r.simple === true && r.tipo === 'estilo') ? ' · activada automáticamente' : ''), origen_telefono: s.telefono, ...estadoNuevo(cfg, r.simple === true && r.tipo === 'estilo') })
       }
       await sb.from('chats_revision').upsert({ telefono: s.telefono, sesion_inicio: s.inicio, equipo_revisado_en: new Date().toISOString() }, { onConflict: 'telefono,sesion_inicio' })
       revisadas++

@@ -13,7 +13,7 @@ type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: strin
 type H = { id: string; valor_anterior: string; cambiado_en: string }
 const CLAVES = ['system_prompt', 'dias_produccion', 'franjas_entrega', 'admin_numeros', 'domiciliario_numero', 'horas_humano', 'minutos_humano_sin_responder', 'proveedor_ia', 'motor_audio',
   'modelo_ia', 'numero_atencion', 'simular_escritura', 'velocidad_escritura_ms', 'espera_agrupar_seg', 'seguimiento_activo', 'local_nombre', 'local_direccion', 'local_lat', 'local_lng', 'barrios_sin_domicilio', 'seguimiento_1_min',
-  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'limite_pedidos_hoy', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url']
+  'seguimiento_2_min', 'horario_inicio', 'horario_fin', 'umbral_pedido_grande', 'anticipacion_minima_min', 'limite_pedidos_hoy', 'permitir_reserva_sin_stock', 'logo_url', 'favicon_url', 'prompt_admin', 'modelo_admin']
 
 export default function Configuracion() {
   const toast = useToast()
@@ -241,6 +241,10 @@ export default function Configuracion() {
         <p className="muted">Estos números <b>nunca</b> se tratan como cliente. Puedes dictarle (texto o nota de voz) <b>"pedido para Juan, 3 de maracuyá, mañana, domicilio…"</b> y te pregunta lo que falte y pide confirmación. También puedes escribirle: <b>evento: …</b>, <b>instrucción: …</b>, <b>avisos</b>, <b>hoy: cacao 30</b>, <b>fabricadas: …</b>. Y enviarle una foto o video con el pie <b>foto: Cacao</b> (agrega al sabor) o <b>nuevo: Nombre, precio, descripción</b> (crea un sabor oculto).</p>
         <label>Si tardas más de estos minutos en responder a un cliente que atiendes tú, el bot retoma el chat (0 = nunca; por defecto 5)</label><input type="number" min={0} value={f.minutos_humano_sin_responder ?? '5'} onChange={(e) => set('minutos_humano_sin_responder', e.target.value)} />
         <label>Horas de atención humana antes de que el bot se reactive solo (por defecto 12)</label><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
+        <label>Prompt del asistente del administrador (canal oficial por WhatsApp)</label>
+        <textarea value={f.prompt_admin ?? ''} onChange={(e) => set('prompt_admin', e.target.value)} placeholder="Vacío = usa el prompt estándar del asistente" />
+        <p className="muted">Es independiente del prompt de ventas. Define cómo te responde y qué hace cuando le das órdenes (registrar lo horneado, cerrar días, cancelar pedidos, avisos, aprendizajes…). Las acciones delicadas siempre piden tu "sí".</p>
+        <label>Modelo de IA solo para el asistente del admin (opcional, del mismo proveedor; uno más rápido responde casi al instante; vacío = el mismo del bot)</label><input value={f.modelo_admin ?? ''} onChange={(e) => set('modelo_admin', e.target.value)} placeholder="ej. claude-haiku-4-5-20251001" />
         <label>Número del domiciliario (WhatsApp, con indicativo, ej. 573001234567)</label><input value={f.domiciliario_numero ?? ''} onChange={(e) => set('domiciliario_numero', e.target.value)} />
       </div>
         </>)}
