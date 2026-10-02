@@ -11,12 +11,15 @@ precacheAndRoute(self.__WB_MANIFEST)
 registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')))
 
 self.addEventListener('push', (e) => {
-  let d: { titulo?: string; cuerpo?: string; tag?: string; url?: string } = {}
+  let d: { titulo?: string; cuerpo?: string; tag?: string; url?: string; badge?: number } = {}
   try { d = e.data?.json() ?? {} } catch { d = { cuerpo: e.data?.text() } }
   e.waitUntil((async () => {
     const abiertas = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     // La app ya está a la vista: ahí suena y se actualiza sola; no duplicar la notificación
     if (abiertas.some((c) => c.visibilityState === 'visible' && c.focused)) { abiertas.forEach((c) => c.postMessage({ tipo: 'push' })); return }
+    // Número en el ícono de la app instalada (barra de tareas / pantalla de inicio)
+    const nav = self.navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void> }
+    try { await nav.setAppBadge?.(typeof d.badge === 'number' && d.badge > 0 ? d.badge : undefined) } catch { /* no soportado */ }
     await self.registration.showNotification(d.titulo || 'Mumi', {
       body: d.cuerpo || '', tag: d.tag || 'mumi', icon: '/favicon.svg', badge: '/favicon.svg',
       data: { url: d.url || '/chats' }, vibrate: [200, 100, 200], renotify: true,

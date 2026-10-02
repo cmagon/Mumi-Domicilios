@@ -39,6 +39,8 @@ export default function App() {
     contar()
     const onSw = (e: MessageEvent) => { if (e.data?.tipo === 'push') { contar(); tono(false) } else if (e.data?.tipo === 'abrir') window.location.assign(e.data.url || '/chats') }
     navigator.serviceWorker?.addEventListener('message', onSw)
+    const alVolver = () => { if (!document.hidden) contar() } // al volver a la app, el número del ícono se actualiza
+    document.addEventListener('visibilitychange', alVolver)
     const sondeo = window.setInterval(() => { if (!document.hidden) contar() }, 15000) // respaldo si el tiempo real se cae
     const ch = supabase.channel('avisos-badge')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones' }, (p) => {
@@ -52,7 +54,7 @@ export default function App() {
         if (!conPush && p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
       })
       .subscribe()
-    return () => { window.clearInterval(sondeo); navigator.serviceWorker?.removeEventListener('message', onSw); supabase.removeChannel(ch) }
+    return () => { window.clearInterval(sondeo); navigator.serviceWorker?.removeEventListener('message', onSw); document.removeEventListener('visibilitychange', alVolver); supabase.removeChannel(ch) }
   }, [esAdmin])
 
   // Indicador de chats por revisar: número en el título de la pestaña y en el ícono de la app instalada (barra de tareas / pantalla de inicio)
