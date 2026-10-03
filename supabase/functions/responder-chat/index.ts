@@ -2,7 +2,7 @@
 // se guarda en el historial como mensaje del equipo y el bot se calla en ese chat mientras la persona atiende.
 // Solo se puede escribir libremente dentro de las 24 h posteriores al último mensaje del cliente.
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { marcarLeidoSolo, sendAudio, sendImage, sendText } from '../whatsapp-webhook/wa.ts'
+import { marcarLeidoSolo, sendAudio, sendImage, sendText, sendVideo } from '../whatsapp-webhook/wa.ts'
 import { transcribir } from '../whatsapp-webhook/ai.ts'
 import { apiKey } from '../whatsapp-webhook/config.ts'
 
@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
   const { data: perfil } = await sb.from('perfiles').select('rol').eq('user_id', u.user.id).maybeSingle()
   if (perfil?.rol !== 'admin') return json({ ok: false, error: 'Sin permiso' }, 403)
 
-  const { telefono, texto, imagen_path, audio_path, responder_a } = await req.json().catch(() => ({}))
+  const { telefono, texto, imagen_path, audio_path, responder_a, medio_url, medio_tipo } = await req.json().catch(() => ({}))
   // Cita (reply) de WhatsApp: solo se acepta un mensaje de este mismo chat
   let replyTo: string | null = null, cita: string | null = null
   if (responder_a) {
@@ -29,7 +29,10 @@ Deno.serve(async (req) => {
   const aud = audio_path ? String(audio_path) : ''
   const msg = String(texto ?? '').trim()
   const img = imagen_path ? String(imagen_path) : ''
-  if (!telefono || (!msg && !img && !aud)) return json({ ok: false, error: 'Falta el teléfono o el mensaje' }, 400)
+  // Foto o video ya guardado del catálogo/biblioteca (URL pública de nuestro almacenamiento)
+  const medio = medio_url ? String(medio_url) : ''
+  if (medio && !medio.startsWith(`${url}/storage/v1/object/public/catalogo/`)) return json({ ok: false, error: 'Archivo no válido' }, 400)
+  if (!telefono || (!msg && !img && !aud && !medio)) return json({ ok: false, error: 'Falta el teléfono o el mensaje' }, 400)
   if (aud && !aud.startsWith('salientes/')) return json({ ok: false, error: 'Ruta de audio no válida' }, 400)
   if (img && !img.startsWith('salientes/')) return json({ ok: false, error: 'Ruta de imagen no válida' }, 400)
   if (msg.length > 4000) return json({ ok: false, error: 'El mensaje es demasiado largo' }, 400)
@@ -56,6 +59,8 @@ Deno.serve(async (req) => {
       if (key && f) transcripcion = (await transcribir(motor, key, new Uint8Array(await f.arrayBuffer()), f.type || 'audio/mpeg', cfg.modelo_ia && cfg.proveedor_ia === 'gemini' ? cfg.modelo_ia : undefined)).trim()
       if (transcripcion && waId) await sb.from('mensajes').update({ contenido: `🎤 Nota de voz del equipo: ${transcripcion}` }).eq('wa_id', waId)
     } catch (e) { console.error('transcripción del audio del equipo', e) } }
+  } else if (medio) {
+    waId = medio_tipo === 'video' ? await sendVideo(telefono, medio, msg || undefined) : await sendImage(telefono, medio, msg || undefined, replyTo)
   } else if (img) {
     const { data: firmada } = await sb.storage.from('comprobantes').createSignedUrl(img, 600)
     if (!firmada?.signedUrl) return json({ ok: false, error: 'No se encontró la imagen subida' })
@@ -63,7 +68,7 @@ Deno.serve(async (req) => {
   } else waId = await sendText(telefono, msg, replyTo)
   if (!waId) return json({ ok: false, error: 'WhatsApp no aceptó el mensaje. Revisa el token en los secrets o los registros de la función.' })
   const ahora = new Date().toISOString()
-  const fila = { telefono, rol: 'admin', contenido: aud ? `🎤 Nota de voz del equipo${transcripcion ? ': ' + transcripcion : ''}` : (msg || '📷 Foto'), wa_id: waId, ...(aud ? { media_path: aud } : img ? { media_path: img } : {}) }
+  const fila = { telefono, rol: 'admin', contenido: aud ? `🎤 Nota de voz del equipo${transcripcion ? ': ' + transcripcion : ''}` : (msg || (medio_tipo === 'video' ? '🎬 Video' : '📷 Foto')), wa_id: waId, ...(aud ? { media_path: aud } : img ? { media_path: img } : {}) }
   const { error: ei } = await sb.from('mensajes').insert({ ...fila, cita })
   if (ei) await sb.from('mensajes').insert(fila) // por si la migración 0040 aún no se corrió
   // La persona toma el chat: el bot se calla (y se reactiva solo pasadas "horas_humano" h sin que escribas)

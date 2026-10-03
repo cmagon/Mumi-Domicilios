@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ImagePlus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from './supabase'
-import { AsyncButton, useToast } from './ui'
+import { AsyncButton, Modal, useToast } from './ui'
 import PedidosCliente from './PedidosCliente'
 import { useConfig } from './hooks'
 import QRCode from 'qrcode'
@@ -57,6 +57,18 @@ export default function ChatView({ telefono, nombre, onBack, resumen, equipo = f
   const [nActivos, setNActivos] = useState(0)
   const [enviandoAudio, setEnviandoAudio] = useState<{ id: string; url: string }[]>([])
   const [citando, setCitando] = useState<Msg | null>(null)
+  const [biblio, setBiblio] = useState<{ id: string; url: string; tipo: 'image' | 'video'; nombre: string }[] | null>(null)
+  // Atajo: enviar al cliente una foto o video ya guardados (biblioteca del bot y fotos del catálogo)
+  const abrirBiblio = async () => {
+    setBiblio([])
+    const [b, p] = await Promise.all([supabase.from('bot_imagenes').select('id,descripcion,url,tipo').eq('activo', true).order('creado_en', { ascending: false }), supabase.from('productos').select('id,nombre,foto_url').eq('activo', true).not('foto_url', 'is', null)])
+    setBiblio([...(b.data ?? []).map((x) => ({ id: x.id, url: x.url, tipo: x.tipo as 'image' | 'video', nombre: x.descripcion || 'Imagen del bot' })), ...(p.data ?? []).map((x) => ({ id: x.id, url: x.foto_url as string, tipo: 'image' as const, nombre: x.nombre }))])
+  }
+  const enviarBiblio = async (m: { url: string; tipo: 'image' | 'video'; nombre: string }) => {
+    const { data, error } = await supabase.functions.invoke('responder-chat', { body: { telefono, medio_url: m.url, medio_tipo: m.tipo, texto: m.nombre === 'Imagen del bot' ? '' : m.nombre, responder_a: citando?.wa_id } })
+    if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo enviar', 'err'); return false }
+    setBiblio(null); setCitando(null); cargar()
+  }
   const [foto, setFoto] = useState<{ blob: Blob; url: string } | null>(null)
   const archivo = useRef<HTMLInputElement>(null)
   const [ahora, setAhora] = useState(Date.now())
@@ -234,6 +246,16 @@ export default function ChatView({ telefono, nombre, onBack, resumen, equipo = f
         <div ref={fin} />
       </div>
 
+      <Modal abierto={biblio !== null} titulo="Enviar una foto al cliente" onClose={() => setBiblio(null)} ancho={520}
+        pie={<button className="sec" onClick={() => setBiblio(null)}>Cerrar</button>}>
+        {biblio && !biblio.length && <p className="muted">Cargando… (si no aparece nada, aún no hay fotos en el catálogo ni en Imágenes del bot)</p>}
+        <div className="biblio-grid">
+          {(biblio ?? []).map((m) => (
+            <button key={`${m.tipo}-${m.id}`} className="biblio-item" onClick={() => enviarBiblio(m)} aria-label={`Enviar ${m.nombre}`}>
+              {m.tipo === 'video' ? <video src={m.url} muted /> : <img src={m.url} alt="" loading="lazy" />}<span>{m.nombre}</span>
+            </button>))}
+        </div>
+      </Modal>
       {!equipo && <div className="chat-pie" hidden={verPedidos}>
         {abierta ? (
           <>
@@ -243,6 +265,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen, equipo = f
             <div className="compositor">
               <input ref={archivo} type="file" accept="image/*" hidden onChange={(e) => elegirFoto(e.target.files?.[0])} />
               <button className="sec adjuntar" aria-label="Adjuntar foto" onClick={() => archivo.current?.click()}>📷</button>
+              <button className="sec adjuntar" aria-label="Enviar foto del catálogo o del bot" title="Fotos del catálogo y del bot" onClick={abrirBiblio}><ImagePlus size={18} aria-hidden /></button>
               <Grabadora onListo={enviarAudio} onError={(m) => toast(m, 'err')} />
               <textarea ref={area} rows={1} aria-label="Escribe un mensaje" placeholder="Escribe un mensaje" value={texto}
                 onChange={(e) => { setTexto(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
