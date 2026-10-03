@@ -138,9 +138,12 @@ export const TOOLS: Tool[] = [
     parameters: { type: 'object', properties: { resumen: { type: 'string', description: 'Qué preguntó o necesita el cliente' }, nombre: { type: 'string' } }, required: ['resumen'] } },
   { name: 'validar_comprobante', description: 'Valida la última imagen de comprobante enviada por el cliente contra el monto a pagar. Si el cliente ya tiene un pedido activo sin pagar, valida contra el total de ese pedido y lo marca como pagado.',
     parameters: { type: 'object', properties: { monto_esperado: { type: 'integer' } }, required: ['monto_esperado'] } },
+  { name: 'consultar_ofertas', description: 'Combos y promociones vigentes ahora (qué incluye cada uno, precio y ahorro). Úsala cuando el cliente pregunte por ofertas, promociones, combos o descuentos.',
+    parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean', description: 'true para enviarle la imagen de cada combo (usa [[FOTOS]] en un párrafo aparte)' } } } },
   { name: 'crear_pedido', description: 'Crea el pedido. Solo con todos los datos completos Y cuando el cliente ya dijo explícitamente cómo va a pagar (nunca asumas el método de pago).',
     parameters: { type: 'object', properties: {
       items: { type: 'array', items: { type: 'object', properties: { sabor: { type: 'string' }, cantidad: { type: 'integer' } }, required: ['sabor', 'cantidad'] } },
+      combos: { type: 'array', description: 'Combos o promociones que pidió (nombre exacto de consultar_ofertas). Sus galletas NO van en items.', items: { type: 'object', properties: { nombre: { type: 'string' }, cantidad: { type: 'integer' } }, required: ['nombre', 'cantidad'] } },
       modalidad: { type: 'string', enum: ['domicilio', 'recoger'] }, direccion: { type: 'string' }, zona_tarifa: { type: 'string', description: 'Nombre de la tarifa de domicilio elegida' },
       nombre: { type: 'string' }, telefono_contacto: { type: 'string' }, metodo_pago: { type: 'string' },
       fecha_entrega: { type: 'string', description: 'YYYY-MM-DD' }, franja_horaria: { type: 'string' }, nota: { type: 'string' },
@@ -148,7 +151,7 @@ export const TOOLS: Tool[] = [
       hora_entrega: { type: 'string', description: 'HH:MM en 24 h, solo si el cliente pidió una hora específica de entrega (ej. "a las 3 pm" → 15:00)' },
       direccion_pendiente: { type: 'boolean', description: 'true si es domicilio pero el cliente dice que dará la dirección/ubicación después (cuando vayan a entregar, "te aviso a dónde me lo llevas"). Se reserva igual, sin dirección, con nota de llamarlo para pedirla y aviso al equipo.' },
       pago_pendiente: { type: 'boolean', description: 'true cuando el cliente pagará por transferencia (Nequi, Bre-B…) pero todavía no tiene comprobante (pagará al recibir o después). El pedido se crea reservado, queda como pago pendiente y se avisa al equipo. NO cambies el método a efectivo.' } },
-      required: ['items', 'modalidad', 'nombre', 'telefono_contacto', 'metodo_pago', 'fecha_entrega'] } },
+      required: ['modalidad', 'nombre', 'telefono_contacto', 'metodo_pago', 'fecha_entrega'] } },
   { name: 'notificar_humano', description: 'Escala la conversación a una persona y detiene el bot en este chat. ANTES de llamarla debes tener el nombre completo y el teléfono de contacto del cliente, y saber qué necesita; si falta algo, pídeselo primero.',
     parameters: { type: 'object', properties: {
       nombre: { type: 'string', description: 'Nombre completo del cliente' },
@@ -404,6 +407,13 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       return { ok: true, instruccion: 'Dile al cliente que no puedes confirmarlo y que alguien del equipo le escribirá; si hay número de atención personalizada, ofrécelo.' }
     }
     case 'marcar_pendiente': ctx.pendiente = String(a.que ?? '').slice(0, 300); return { ok: true }
+    case 'consultar_ofertas': {
+      const vig = await combosVigentes(sb)
+      if (!vig.length) return { hay_ofertas: false, nota: 'Ahora no hay combos ni promociones vigentes. No inventes ofertas.' }
+      if (a.enviar_fotos === true) ctx.fotos = vig.filter((c) => c.imagen_url).map((c) => ({ link: c.imagen_url as string, caption: `${c.nombre} — $${c.precio}`, tipo: 'image' as const }))
+      return { hay_ofertas: true, ofertas: vig.map((c) => ({ nombre: c.nombre, descripcion: c.descripcion || null, precio: c.precio, incluye: (c.combo_items as any[]).map((i) => `${i.cantidad} ${i.productos.nombre}`), precio_normal: precioNormal(c), ahorro: Math.max(0, precioNormal(c) - c.precio), vigente_hasta: c.hasta ?? null })),
+        nota: 'Para venderlo usa crear_pedido con combos=[{nombre, cantidad}] (sus galletas no van en items). Aplican las mismas reglas de fecha, stock y pago.' }
+    }
     case 'crear_pedido': {
       const r = await crearPedido(a, ctx) as { ok?: boolean }
       if (r.ok) { ctx.pedidoCreado = true; ctx.pendiente = null } else ctx.errorPedido = JSON.stringify(r).slice(0, 300)
@@ -432,6 +442,39 @@ export function barrioSinDomicilio(cfg: Record<string, string>, ...textos: (stri
   return (cfg.barrios_sin_domicilio ?? '').split(',').map((x) => x.trim()).filter(Boolean).find((b) => t.includes(sinAcento(b))) ?? null
 }
 
+// Combos y promociones vigentes (activos y dentro de su fecha)
+export async function combosVigentes(sb: SupabaseClient) {
+  const hoy = fechaBogota()
+  const { data, error } = await sb.from('combos').select('id,nombre,descripcion,precio,imagen_url,desde,hasta,combo_items(cantidad,productos(nombre,precio,activo))').eq('activo', true)
+  if (error) return [] // migración 0045 pendiente
+  return (data ?? []).filter((c: any) => (!c.desde || c.desde <= hoy) && (!c.hasta || c.hasta >= hoy) && (c.combo_items ?? []).length && (c.combo_items ?? []).every((i: any) => i.productos?.activo !== false)) as any[]
+}
+const precioNormal = (c: any) => (c.combo_items ?? []).reduce((t: number, i: any) => t + i.cantidad * (i.productos?.precio ?? 0), 0)
+
+async function expandirCombos(sb: SupabaseClient, pedidos: { nombre: string; cantidad: number }[]): Promise<{ items: any[]; nota: string } | { error: string }> {
+  const vig = await combosVigentes(sb)
+  const items: any[] = [], notas: string[] = []
+  for (const p of pedidos) {
+    const n = Number(p.cantidad)
+    if (!Number.isInteger(n) || n < 1 || n > 100) return { error: 'Cantidad inválida de combos.' }
+    const c = vig.find((x) => sinAcento(x.nombre) === sinAcento(String(p.nombre))) ?? vig.find((x) => sinAcento(x.nombre).includes(sinAcento(String(p.nombre))) || sinAcento(String(p.nombre)).includes(sinAcento(x.nombre)))
+    if (!c) return { error: `El combo "${p.nombre}" no está vigente. Consulta consultar_ofertas y ofrece solo lo que aparece.` }
+    const normal = precioNormal(c)
+    if (!normal) return { error: `El combo "${c.nombre}" no tiene galletas configuradas.` }
+    // Precio por pieza proporcional al precio normal; el residuo de redondeo se carga a una pieza para que cada combo cueste exactamente su precio
+    const comp = (c.combo_items as any[]).map((i) => ({ nombre: i.productos.nombre as string, cantidad: i.cantidad as number, pieza: Math.round(c.precio * (i.productos.precio / normal)) }))
+    const resto = c.precio - comp.reduce((t, k) => t + k.pieza * k.cantidad, 0)
+    comp.forEach((k, idx) => {
+      if (idx === 0 && resto !== 0) {
+        if (k.cantidad > 1) items.push({ sabor: k.nombre, cantidad: (k.cantidad - 1) * n, precio_unitario: k.pieza })
+        items.push({ sabor: k.nombre, cantidad: n, precio_unitario: k.pieza + resto })
+      } else items.push({ sabor: k.nombre, cantidad: k.cantidad * n, precio_unitario: k.pieza })
+    })
+    notas.push(`Combo: ${c.nombre} ×${n}`)
+  }
+  return { items, nota: notas.join(' · ') }
+}
+
 async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   const { sb, cfg } = ctx
   const hoy = fechaBogota()
@@ -451,6 +494,13 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   if (a.modalidad === 'domicilio') {
     const nogo = barrioSinDomicilio(cfg, a.direccion, a.nota)
     if (nogo) return { ok: false, error: `En ${nogo} no hacemos domicilio. Díselo con amabilidad y ofrécele recoger en el local.` }
+  }
+  // Combos: se expanden a sus galletas con el precio repartido para que el total sea el del combo
+  if (Array.isArray(a.combos) && a.combos.length) {
+    const r = await expandirCombos(sb, a.combos)
+    if ('error' in r) return { ok: false, error: r.error }
+    a.items = [...(Array.isArray(a.items) ? a.items : []), ...r.items]
+    a.nota = [a.nota, r.nota].filter(Boolean).join(' · ')
   }
   // Datos anómalos
   const lista: any[] = Array.isArray(a.items) ? a.items : []
@@ -486,7 +536,7 @@ async function crearPedido(a: Record<string, any>, ctx: Ctx) {
   for (const it of a.items) {
     const { data: p } = await sb.from('productos').select('id,nombre,precio').eq('activo', true).ilike('nombre', `%${it.sabor}%`).limit(1).maybeSingle()
     if (!p) return { ok: false, error: `Sabor no encontrado: ${it.sabor}` }
-    items.push({ producto_id: p.id, cantidad: it.cantidad, precio: p.precio, nombre: p.nombre })
+    items.push({ producto_id: p.id, cantidad: it.cantidad, precio: Number.isFinite(Number(it.precio_unitario)) ? Number(it.precio_unitario) : p.precio, nombre: p.nombre })
   }
   let tarifa = 0
   if (a.modalidad === 'domicilio') {

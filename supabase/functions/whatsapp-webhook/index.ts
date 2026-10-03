@@ -13,7 +13,7 @@ import { conversarEquipo } from './equipo.ts'
 import { avisoAdminWA } from './adminresumen.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
-import { TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, ventanaEntregas, type Ctx } from './tools.ts'
+import { combosVigentes, TOOLS, ejecutar, fechaBogota, diaSemana, pedidoActivo, pedidosActivos, cargarExcepciones, estadoEntrega, etiquetaEntrega, ventanaEntregas, type Ctx } from './tools.ts'
 
 // deno-lint-ignore no-explicit-any
 declare const EdgeRuntime: any
@@ -216,6 +216,15 @@ async function manejar(msg: any, nombreWA?: string) {
 }
 
 // Genera y envía la respuesta del bot. `agrupar`: espera por si el cliente sigue escribiendo (ráfagas).
+// Combos y promociones vigentes: el bot las menciona cuando preguntan por ofertas y, si hay, también en el primer mensaje (breve, tras saludar)
+async function contextoOfertas(): Promise<string> {
+  const vig = await combosVigentes(sb)
+  if (!vig.length) return ''
+  const normal = (c: any) => (c.combo_items ?? []).reduce((t: number, i: any) => t + i.cantidad * (i.productos?.precio ?? 0), 0)
+  return `\n\n[Ofertas vigentes] ${vig.map((c: any) => `• ${c.nombre} — $${c.precio}: ${(c.combo_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(' + ')}${normal(c) > c.precio ? ` (normal $${normal(c)})` : ''}${c.hasta ? ` (hasta el ${c.hasta})` : ''}${c.descripcion ? ` — ${c.descripcion}` : ''}`).join(' ')} ` +
+    `Cuando el cliente pregunte por ofertas, promociones, combos o descuentos, cuéntaselas (usa consultar_ofertas para el detalle). Además, en el PRIMER mensaje de la conversación menciónalas brevemente después de saludar aunque no las pida (una sola vez; si no le interesan, no insistas). Para venderlas usa crear_pedido con combos.`
+}
+
 async function responder(p: { from: string; msgId: string; texto: string; cfg: Record<string, string>; ultimoComprobante?: string | null; nombreWA?: string; retomado?: boolean; agrupar: boolean }) {
   const { from, texto, cfg, nombreWA } = p
   const msg = { id: p.msgId }
@@ -277,7 +286,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
     `Días de producción: ${cfg.dias_produccion}.${calEspecial}${(cfg.barrios_sin_domicilio ?? '').trim() ? ` NO hacemos domicilio en: ${cfg.barrios_sin_domicilio}.` : ''} Franjas de entrega: ${franjasHabladas(cfg.franjas_entrega ?? '')}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
-    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => ''))
+    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => '')) + (await contextoOfertas().catch(() => ''))
   const ctx: Ctx = { sb, cfg, telefono: from, prov, sesionInicio, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'

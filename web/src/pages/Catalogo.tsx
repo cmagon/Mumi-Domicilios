@@ -3,6 +3,7 @@ import { supabase } from '../supabase'
 import { cop } from '../hooks'
 import type { Categoria, Producto } from '../types'
 import GaleriaMedios from '../GaleriaMedios'
+import Combos from '../Combos'
 import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
 
 const VACIO = { id: '', nombre: '', descripcion: '', detalles: '', precio: '', foto_url: '' as string | null, activo: true, categoria_id: '' }
@@ -19,6 +20,7 @@ export default function Catalogo() {
   const [cats, setCats] = useState<Categoria[]>([])
   const [filtro, setFiltro] = useState<string>('todas')
   const [verCats, setVerCats] = useState(false)
+  const [vista, setVista] = useState<'sabores' | 'combos'>('sabores')
   const [nuevaCat, setNuevaCat] = useState('')
   const load = async () => {
     const [{ data }, c] = await Promise.all([supabase.from('productos').select('*').order('nombre'), supabase.from('categorias_producto').select('*').order('orden').order('nombre')])
@@ -90,9 +92,14 @@ export default function Catalogo() {
     <>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <h2 style={{ margin: 0, flex: '1 1 auto' }}>Catálogo</h2>
-        <button className="sec" onClick={() => setVerCats(true)}>🗂 Categorías</button>
-        <button onClick={() => abrir()}>+ Nuevo sabor</button>
+        {vista === 'sabores' && <><button className="sec" onClick={() => setVerCats(true)}>🗂 Categorías</button>
+        <button onClick={() => abrir()}>+ Nuevo sabor</button></>}
       </div>
+      <div className="chips" style={{ marginBottom: 12 }}>
+        <button className={`chip ${vista === 'sabores' ? 'on' : ''}`} onClick={() => setVista('sabores')}>🧁 Sabores y productos</button>
+        <button className={`chip ${vista === 'combos' ? 'on' : ''}`} onClick={() => setVista('combos')}>🎁 Combos y promociones</button>
+      </div>
+      {vista === 'combos' ? <Combos productos={items.filter((p) => p.activo)} /> : <>
       {cats.length > 0 && <div className="chips" style={{ marginBottom: 12 }}>
         <button className={`chip ${filtro === 'todas' ? 'on' : ''}`} onClick={() => setFiltro('todas')}>Todas<b>{items.length}</b></button>
         {cats.map((c) => <button key={c.id} className={`chip ${filtro === c.id ? 'on' : ''}`} onClick={() => setFiltro(c.id)}>{c.nombre}<b>{items.filter((p) => p.categoria_id === c.id).length}</b></button>)}
@@ -122,6 +129,7 @@ export default function Catalogo() {
         </div>
       </div>
 
+      </>}
       <Modal abierto={!!ed} titulo={ed?.id ? 'Editar sabor' : 'Nuevo sabor'} onClose={() => setEd(null)}
         pie={<><button className="sec" onClick={() => setEd(null)}>Cancelar</button><AsyncButton okText="Guardado" onClick={guardar}>Guardar</AsyncButton></>}>
         {ed && <>
