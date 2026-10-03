@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null, // el registro lo hace main.tsx (con búsqueda periódica de versiones nuevas)
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',

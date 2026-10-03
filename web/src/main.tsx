@@ -4,17 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App'
 import { configOk } from './supabase'
+import { registerSW } from 'virtual:pwa-register'
+import { activarActualizacionAutomatica, limpiarYRecargar } from './actualizar'
 
-// Borra el service worker y la caché (por si quedó una versión vieja) y recarga
-async function limpiarYRecargar() {
-  try {
-    const regs = await navigator.serviceWorker?.getRegistrations()
-    await Promise.all((regs ?? []).map((r) => r.unregister()))
-    const keys = await caches?.keys()
-    await Promise.all((keys ?? []).map((k) => caches.delete(k)))
-  } catch { /* ignorar */ }
-  location.reload()
-}
+activarActualizacionAutomatica(registerSW as never)
 
 function Aviso({ titulo, detalle }: { titulo: string; detalle: string }) {
   return (

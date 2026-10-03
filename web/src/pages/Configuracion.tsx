@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { limpiarYRecargar } from '../actualizar'
 import { ArchiveRestore, Bot, Brain, CalendarDays, CreditCard, MapPin, Megaphone, MessagesSquare, Palette, Users } from 'lucide-react'
 import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
@@ -273,6 +274,7 @@ export default function Configuracion() {
         {f.favicon_url && <button type="button" className="sec sm" onClick={() => set('favicon_url', '')}>Quitar (usar el logo)</button>}
         <Info bloque>El logo va solo en el encabezado. El favicon es el ícono de la pestaña y de la app instalada; si no subes uno, se usa el logo. Mejor un PNG cuadrado de al menos 512 × 512 px, con fondo.</Info>
         <Switch checked={sonidoOn} onChange={cambiarSonido} label="Sonido de notificaciones en este dispositivo (nuevo mensaje de cliente o aviso)" />
+        <div className="row"><AsyncButton className="sec" okText="Actualizando…" onClick={async () => { await limpiarYRecargar(); return 'omitir' as const }}>Forzar actualización de la app</AsyncButton></div>
         <button type="button" className="sec" onClick={() => tono()}>🔔 Probar sonido</button>
         <Info bloque>En el celular, el sonido solo funciona con la app abierta y después de tocar la pantalla; si no oyes nada, sube el volumen de <b>multimedia</b> y quita el modo silencio (en iPhone, el interruptor lateral).</Info>
         <Switch checked={pushOn} onChange={cambiarPush} label="Notificaciones en la barra de tareas / pantalla (funcionan con la app cerrada o en segundo plano)" />
