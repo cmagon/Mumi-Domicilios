@@ -83,6 +83,16 @@ export default function Produccion() {
     toast('Horneado del día registrado'); await load(); setTimeout(() => setModal(null), 450)
   }
 
+  // Ajuste rápido del horneado de un sabor (+1, −1, +5) o "agotado" (horneadas = reservadas). Sin registro previo, parte de lo reservado.
+  const guardarHorneadas = async (f: Fila, total: number) => {
+    const horneadas = Math.max(0, total)
+    setFilas((l) => l.map((x) => (x.producto_id === f.producto_id ? { ...x, horneado_registrado: true, horneadas_dia: horneadas, extras_dia: horneadas - x.reservadas_dia, faltan_dia: Math.max(0, x.reservadas_dia - horneadas) } : x)))
+    const { error } = await supabase.from('produccion_dia').upsert({ fecha, producto_id: f.producto_id, horneadas, actualizado_en: new Date().toISOString() }, { onConflict: 'fecha,producto_id' })
+    if (error) { toast(error.message, 'err'); load() }
+  }
+  const ajustar = (f: Fila, delta: number) => guardarHorneadas(f, (f.horneado_registrado ? f.horneadas_dia : f.reservadas_dia) + delta)
+  const agotar = (f: Fila) => guardarHorneadas(f, f.reservadas_dia)
+
   const imprimirTodos = async () => {
     const ids = pedidos.filter((o) => ['recibido', 'pago_verificado', 'pendiente_cobro'].includes(o.estado)).map((o) => o.id)
     imprimirTickets(pedidos)
@@ -134,17 +144,31 @@ export default function Produccion() {
           <div style={{ paddingBottom: 2 }}><button className="sec" onClick={() => setCalAbierto(true)}>📅 Calendario</button></div>
           <div className="muted" style={{ paddingBottom: 10 }}>{etiquetaFecha(fecha)}</div>
         </div>
-        {!registrado && <p className="muted">Aún no registras cuántas se hornean este día. Mientras tanto el bot no ofrece galletas para entrega el mismo día; solo agenda.</p>}
-        <div className="stock-grid">
-          {filas.map((f) => (
-            <div key={f.producto_id} className={`stock-item ${registrado && f.extras_dia === 0 ? 'cero' : ''}`}>
-              <div className="stock-nombre">{f.nombre}</div>
-              {registrado
-                ? <><div className="stock-num" key={f.extras_dia}>{f.extras_dia}</div><div className="muted">extras disponibles</div></>
-                : <><div className="stock-num" style={{ color: 'var(--mut)' }}>—</div><div className="muted">sin registrar</div></>}
-              <div className="stock-detalle">{f.reservadas_dia} reservadas{registrado ? ` · ${f.horneadas_dia} horneadas` : ''} · a producir {porProducir(f.producto_id)}</div>
-              {f.faltan_dia > 0 && <span className="badge rojo">Faltan {f.faltan_dia} para cubrir lo reservado</span>}
-            </div>))}
+        {!registrado && <p className="muted">Aún no registras cuántas se hornean este día. El bot ofrece los sabores de hoy como reserva por confirmar.</p>}
+        <div className="prod-resumen">
+          <div><span className="muted">Horneadas</span><b>{filas.reduce((t, f) => t + (f.horneado_registrado ? f.horneadas_dia : 0), 0)}</b></div>
+          <div><span className="muted">Reservadas</span><b>{filas.reduce((t, f) => t + f.reservadas_dia, 0)}</b></div>
+          <div><span className="muted">Libres</span><b className="ok">{filas.reduce((t, f) => t + (f.horneado_registrado ? Math.max(0, f.extras_dia) : 0), 0)}</b></div>
+        </div>
+        <div className="prod-cards">
+          {filas.map((f) => {
+            const base = f.horneado_registrado ? f.horneadas_dia : f.reservadas_dia
+            const libres = f.horneado_registrado ? f.extras_dia : null
+            const estado = !f.horneado_registrado ? { t: 'Sin registrar', c: 'gris' } : f.faltan_dia > 0 ? { t: `Faltan ${f.faltan_dia}`, c: 'rojo' } : libres === 0 ? { t: 'Agotado', c: 'rojo' } : (libres ?? 0) <= 3 ? { t: `Pocas unidades (${libres})`, c: 'ambar' } : { t: `Disponible (${libres})`, c: 'verde' }
+            const pct = f.horneado_registrado && f.horneadas_dia > 0 ? Math.min(100, Math.round((Math.min(f.reservadas_dia, f.horneadas_dia) / f.horneadas_dia) * 100)) : 0
+            return (
+              <div key={f.producto_id} className={`prod-card ${estado.c}`}>
+                <div className="prod-cab"><b>{f.nombre}</b><span className={`prod-estado ${estado.c}`}>{estado.t}</span></div>
+                <div className="prod-nums"><span>Horneadas: <b>{f.horneado_registrado ? f.horneadas_dia : '—'}</b></span><span>Reservadas: <b>{f.reservadas_dia}</b></span><span>A producir: <b>{porProducir(f.producto_id)}</b></span></div>
+                <div className="pista" aria-hidden><div className={`relleno prod-${estado.c}`} style={{ width: `${pct}%` }} /></div>
+                <div className="prod-botones" role="group" aria-label={`Ajustar horneado de ${f.nombre}`}>
+                  <button className="sec sm" onClick={() => ajustar(f, -1)} aria-label={`Quitar 1 de ${f.nombre}`} disabled={base <= 0}>−1</button>
+                  <button className="sec sm" onClick={() => ajustar(f, 1)} aria-label={`Agregar 1 de ${f.nombre}`}>+1</button>
+                  <button className="sec sm" onClick={() => ajustar(f, 5)} aria-label={`Agregar 5 de ${f.nombre}`}>+5</button>
+                  <button className="sec sm prod-agotar" onClick={() => agotar(f)} disabled={f.horneado_registrado && libres === 0}>Marcar agotado</button>
+                </div>
+              </div>)
+          })}
         </div>
         <Info bloque>Extras = horneadas − reservadas. Cada pedido del bot para este día los descuenta al instante; cancelar o eliminar un pedido los devuelve.</Info>
       </div>

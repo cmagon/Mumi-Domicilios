@@ -419,3 +419,48 @@ header.top h1.sr { display: block; flex: none; }
 @media (max-width: 899px) { header.top .salir { display: none; } .tiles { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 520px) { .tiles { grid-template-columns: 1fr; } .tile { display: grid; grid-template-columns: 44px 1fr; grid-template-areas: 'i t' 'i d'; column-gap: 12px; align-items: center; padding: 12px; } .tile .tile-ico { grid-area: i; margin: 0; } .tile b { grid-area: t; } .tile .muted { grid-area: d; } }
 .lbl-fila { display: flex; align-items: center; gap: 2px; margin: 8px 0 3px; } .lbl-fila label { margin: 0; flex: 0 1 auto; } .lbl-fila .info-btn { min-width: 28px; min-height: 28px; }
+
+/* ===== KPIs ===== */
+.kpis-pg { display: flex; flex-direction: column; gap: 12px; }
+.kpis-cab { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.kpis-sobre { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--s); }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.kpi-card { position: relative; background: #fff; border: 1px solid var(--bd); border-radius: 14px; padding: 14px 14px 12px; display: flex; flex-direction: column; gap: 2px; }
+.kpi-ico { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+.kpi-ico.verde { background: #e6f4e8; color: #1e7d32; } .kpi-ico.azul { background: #e7ecfb; color: #2a4bb0; } .kpi-ico.ambar { background: #fff1d6; color: #a45b00; } .kpi-ico.morado { background: #ece3f5; color: #4b2a78; }
+.kpi-valor { font-size: 28px; font-weight: 700; color: var(--tx); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.kpi-sub { font-size: 18px; font-weight: 500; color: var(--mut); }
+.kpi-delta { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; }
+.kpi-delta.sube { color: #1e7d32; } .kpi-delta.baja { color: #a3001b; }
+.curva { display: flex; align-items: flex-end; gap: 8px; height: 170px; padding: 4px 2px 0; }
+.curva-col { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.curva-barra { width: 100%; max-width: 46px; background: #1f2a44; border-radius: 8px 8px 0 0; transition: height .3s; }
+.curva-barra.pico { background: #f59e0b; }
+.curva-n { font-size: 12px; font-weight: 600; } .curva-h { font-size: 11px; color: var(--mut); }
+.pago-fila, .rank-fila { margin: 10px 0; } .pago-linea { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+.rank-n { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; background: #eef0f4; font-size: 12px; align-items: center; justify-content: center; margin-right: 4px; }
+.rank-pie { display: flex; justify-content: space-between; gap: 8px; margin-top: 3px; font-size: 12px; flex-wrap: wrap; }
+.pista { height: 8px; background: #eef0f4; border-radius: 6px; overflow: hidden; } .pista .relleno { height: 100%; background: var(--p); border-radius: 6px; transition: width .3s; }
+
+/* ===== Producción: tarjetas con ajuste rápido ===== */
+.prod-resumen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.prod-resumen > div { background: #f6f6f6; border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; font-size: 12px; } .prod-resumen b { font-size: 22px; font-variant-numeric: tabular-nums; } .prod-resumen b.ok { color: #1e7d32; }
+.prod-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.prod-card { border: 1px solid var(--bd); border-radius: 14px; padding: 12px; background: #fff; display: flex; flex-direction: column; gap: 8px; }
+.prod-card.ambar { border-color: #f2d28a; background: #fffaf0; } .prod-card.rojo { border-color: #efb3ba; background: #fff6f7; }
+.prod-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.prod-estado { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.prod-estado.verde { background: #e6f4e8; color: #1b5e20; } .prod-estado.ambar { background: #fff1d6; color: #8a4b00; } .prod-estado.rojo { background: #fde8eb; color: #a3001b; } .prod-estado.gris { background: #eee; color: #4a4a4a; }
+.prod-nums { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--mut); } .prod-nums b { color: var(--tx); }
+.prod-card .relleno.prod-verde { background: #1e7d32; } .prod-card .relleno.prod-ambar { background: #f59e0b; } .prod-card .relleno.prod-rojo { background: #c62828; } .prod-card .relleno.prod-gris { background: #bbb; }
+.prod-botones { display: flex; gap: 6px; flex-wrap: wrap; } .prod-botones button { min-width: 44px; } .prod-agotar { margin-left: auto; }
+
+/* Selector de fotos del chat */
+.biblio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.biblio-item { display: flex; flex-direction: column; gap: 4px; background: #fff; color: var(--tx); border: 1px solid var(--bd); border-radius: 10px; padding: 6px; text-align: left; font-size: 12px; }
+.biblio-item:hover:not(:disabled) { background: #fbeceb; color: var(--tx); }
+.biblio-item img, .biblio-item video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.tarjeta.img-bot.activa { border-color: #2e9b57; box-shadow: 0 0 0 2px rgba(46, 155, 87, .25); } .tarjeta.img-bot.sel { outline: 2px solid var(--s); outline-offset: 2px; }
+.img-bot-foto { position: relative; display: block; padding: 0; background: none; color: inherit; border-radius: 12px 12px 0 0; overflow: hidden; width: 100%; } .img-bot-foto:hover:not(:disabled) { background: none; transform: none; box-shadow: none; }
+.img-bot-badge { position: absolute; left: 8px; top: 8px; display: inline-flex; gap: 4px; align-items: center; background: #1e7d32; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: .02em; }
+.img-bot-cat { position: absolute; left: 8px; bottom: 8px; background: rgba(0, 0, 0, .65); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 6px; }
