@@ -222,7 +222,7 @@ async function contextoOfertas(): Promise<string> {
   if (!vig.length) return ''
   const normal = (c: any) => (c.combo_items ?? []).reduce((t: number, i: any) => t + i.cantidad * (i.productos?.precio ?? 0), 0)
   return `\n\n[Ofertas vigentes] ${vig.map((c: any) => `• ${c.nombre} — $${c.precio}: ${(c.combo_items ?? []).map((i: any) => `${i.cantidad} ${i.productos?.nombre}`).join(' + ')}${normal(c) > c.precio ? ` (normal $${normal(c)})` : ''}${c.hasta ? ` (hasta el ${c.hasta})` : ''}${c.descripcion ? ` — ${c.descripcion}` : ''}`).join(' ')} ` +
-    `Cuando el cliente pregunte por ofertas, promociones, combos o descuentos, cuéntaselas (usa consultar_ofertas para el detalle). Además, en el PRIMER mensaje de la conversación menciónalas brevemente después de saludar aunque no las pida (una sola vez; si no le interesan, no insistas). Para venderlas usa crear_pedido con combos.`
+    `Cuando el cliente pregunte por ofertas, promociones, combos o descuentos, cuéntaselas (usa consultar_ofertas para el detalle). El saludo inicial va solo (sin ofertas). Cuando el cliente pregunte por un producto, sabores, disponibilidad o precios, dale esa información y de paso, con naturalidad y en una frase, menciona la promoción que aplique (una sola vez; si no le interesa, no insistas). Para venderlas usa crear_pedido con combos.`
 }
 
 async function responder(p: { from: string; msgId: string; texto: string; cfg: Record<string, string>; ultimoComprobante?: string | null; nombreWA?: string; retomado?: boolean; agrupar: boolean }) {
