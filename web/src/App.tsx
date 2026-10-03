@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Bike, ClipboardList, Cookie, Flame, LogOut, Megaphone, Menu, MessageCircle, PlusCircle, Settings, TrendingUp, Users, X } from 'lucide-react'
 import { NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
@@ -18,6 +19,7 @@ import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
 import { tono, desbloquearAudio } from './sonido'
 import { avisoLocal, suscripcionActual } from './notificaciones'
+import { activarEtiquetas } from './etiquetas'
 import { numerosEquipo } from './equipo'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
@@ -31,7 +33,9 @@ export default function App() {
   const loc = useLocation()
   const [noLeidos, setNoLeidos] = useState(0)
   const [menu, setMenu] = useState(false)
+  useEffect(() => activarEtiquetas(), [])
   useEffect(() => setMenu(false), [loc.pathname])
+  useEffect(() => { if (!menu) return; const f = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false) }; document.addEventListener('keydown', f); return () => document.removeEventListener('keydown', f) }, [menu])
 
   // Avisos del bot (pagos, atención humana, cosas que no pudo resolver): contador en vivo + notificación del navegador
   useEffect(() => {
@@ -122,29 +126,31 @@ export default function App() {
       <button onClick={() => supabase.auth.signOut()}>Salir</button></div></main>
   )
 
-  const tabs: [string, string, string][] = [['/chats', '💬', 'Chats'], ['/pedidos', '📋', 'Pedidos'], ['/', '🔥', 'Producción'], ['/manual', '➕', 'Pedido manual'],
-    ['/clientes', '👥', 'Clientes'], ['/catalogo', '🧁', 'Catálogo'], ['/campanas', '📣', 'Campañas'], ['/tarifas', '🛵', 'Tarifas'], ['/kpis', '📈', 'KPIs'], ['/config', '⚙️', 'Configuración']]
+  const tabs: [string, ReactNode, string][] = [['/chats', <MessageCircle size={18} />, 'Chats'], ['/pedidos', <ClipboardList size={18} />, 'Pedidos'], ['/', <Flame size={18} />, 'Producción'], ['/manual', <PlusCircle size={18} />, 'Pedido manual'],
+    ['/clientes', <Users size={18} />, 'Clientes'], ['/catalogo', <Cookie size={18} />, 'Catálogo'], ['/campanas', <Megaphone size={18} />, 'Campañas'], ['/tarifas', <Bike size={18} />, 'Tarifas'], ['/kpis', <TrendingUp size={18} />, 'KPIs'], ['/config', <Settings size={18} />, 'Configuración']]
   const enChats = loc.pathname === '/chats'
   return (
     <ToastProvider>
       <header className="top">
-        <button className="burger" aria-label="Menú" onClick={() => setMenu(true)}>☰{noLeidos > 0 && <span className="punto">{noLeidos}</span>}</button>
-        {cfg.logo_url ? <img className="logo-cab" src={cfg.logo_url} alt="Mumi" /> : <span className="logo-cab-vacio">🍪</span>}
+        <a className="saltar" href="#contenido">Saltar al contenido</a>
+        <h1 className="sr">Mumi Delivery</h1>
+        <button className="burger" aria-label={noLeidos > 0 ? `Menú, ${noLeidos} chats por revisar` : 'Menú'} aria-expanded={menu} onClick={() => setMenu(true)}><Menu size={22} aria-hidden />{noLeidos > 0 && <span className="punto" aria-hidden>{noLeidos}</span>}</button>
+        {cfg.logo_url ? <img className="logo-cab" src={cfg.logo_url} alt="Mumi" /> : <span className="logo-cab-vacio" role="img" aria-label="Mumi"><Cookie size={24} aria-hidden /></span>}
         <span style={{ flex: 1 }} />
-        <button className="salir" onClick={() => supabase.auth.signOut()}>⏻ Cerrar sesión</button>
+        <button className="salir" onClick={() => supabase.auth.signOut()}><LogOut size={16} aria-hidden /> Cerrar sesión</button>
       </header>
       <AlertaIA />
-      <nav className="tabs">
-        {tabs.map(([to, , l]) => <NavLink key={to} to={to} end={to === '/'}>{l}{to === '/chats' && noLeidos > 0 ? ` 🔴${noLeidos}` : ''}</NavLink>)}
+      <nav className="tabs" aria-label="Secciones">
+        {tabs.map(([to, ico, l]) => <NavLink key={to} to={to} end={to === '/'}>{ico}{l}{to === '/chats' && noLeidos > 0 && <span className="cuenta" aria-label={`${noLeidos} por revisar`}>{noLeidos}</span>}</NavLink>)}
       </nav>
       {menu && <>
         <div className="drawer-fondo" onClick={() => setMenu(false)} />
-        <aside className="drawer">
-          <div className="drawer-cab">{cfg.logo_url && <img src={cfg.logo_url} alt="" />}<b>Mumi Delivery</b><button className="ghost" style={{ color: '#fff' }} onClick={() => setMenu(false)}>✕</button></div>
+        <aside className="drawer" role="dialog" aria-modal="true" aria-label="Menú de secciones">
+          <div className="drawer-cab">{cfg.logo_url && <img src={cfg.logo_url} alt="" />}<b>Mumi Delivery</b><button className="ghost" style={{ color: '#fff' }} aria-label="Cerrar menú" onClick={() => setMenu(false)}><X size={20} aria-hidden /></button></div>
           {tabs.map(([to, ico, l]) => <NavLink key={to} to={to} end={to === '/'}><span className="ico">{ico}</span>{l}{to === '/chats' && noLeidos > 0 && <span className="cuenta">{noLeidos}</span>}</NavLink>)}
-          <div className="drawer-pie"><button className="sec" style={{ width: '100%' }} onClick={() => supabase.auth.signOut()}>⏻ Cerrar sesión</button></div>
+          <div className="drawer-pie"><button className="sec" style={{ width: '100%', display: 'inline-flex', gap: 8, alignItems: 'center', justifyContent: 'center' }} onClick={() => supabase.auth.signOut()}><LogOut size={16} aria-hidden /> Cerrar sesión</button></div>
         </aside></>}
-      <main key={loc.pathname} className={enChats ? 'ancho' : ''}>
+      <main id="contenido" tabIndex={-1} key={loc.pathname} className={enChats ? 'ancho' : ''}>
         <Routes>
           <Route path="/" element={<Produccion />} />
           <Route path="/avisos" element={<Navigate to="/chats" />} />

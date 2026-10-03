@@ -49,13 +49,13 @@ export default function PedidoManual() {
 
   return (
     <div className="card"><h2>Pedido manual</h2>
-      <label>Cliente *</label><input className={err.nombre ? 'invalido' : ''} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
-      <label>Teléfono *</label><input className={err.tel ? 'invalido' : ''} inputMode="tel" value={f.tel} onChange={(e) => set('tel', e.target.value)} />
+      <label>Cliente *</label><input aria-label="Cliente" className={err.nombre ? 'invalido' : ''} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
+      <label>Teléfono *</label><input aria-label="Teléfono" className={err.tel ? 'invalido' : ''} inputMode="tel" value={f.tel} onChange={(e) => set('tel', e.target.value)} />
       <label>Sabores y cantidades *</label>
       {items.map((it, k) => (<div className="row" key={k}>
-        <select className={err.items ? 'invalido' : ''} value={it.producto_id} onChange={(e) => setItems(items.map((x, j) => j === k ? { ...x, producto_id: e.target.value } : x))}>
+        <select aria-label={`Sabor ${k + 1}`} className={err.items ? 'invalido' : ''} value={it.producto_id} onChange={(e) => setItems(items.map((x, j) => j === k ? { ...x, producto_id: e.target.value } : x))}>
           <option value="">— sabor —</option>{prods.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select>
-        <input type="number" min={1} value={it.cantidad} onChange={(e) => setItems(items.map((x, j) => j === k ? { ...x, cantidad: +e.target.value } : x))} />
+        <input aria-label={`Cantidad del sabor ${k + 1}`} type="number" min={1} value={it.cantidad} onChange={(e) => setItems(items.map((x, j) => j === k ? { ...x, cantidad: +e.target.value } : x))} />
         {items.length > 1 && <button className="sec sm" onClick={() => setItems(items.filter((_, j) => j !== k))} aria-label="Quitar">✕</button>}</div>))}
       <button type="button" className="sec sm" onClick={() => setItems([...items, { producto_id: '', cantidad: 1 }])}>+ otro sabor</button>
       <div className="row">
@@ -63,13 +63,13 @@ export default function PedidoManual() {
         <div><label>Hora pedida (opcional)</label><HoraPicker valor={f.hora} onChange={(v) => set('hora', v)} placeholder="Sin hora" /></div>
       </div>
       <label>Franja horaria</label><FranjaSelect valor={f.franja} onChange={(v) => set('franja', v)} />
-      <label>Modalidad</label><select value={f.modalidad} onChange={(e) => set('modalidad', e.target.value)}><option value="domicilio">Domicilio</option><option value="recoger">Recoger</option></select>
-      {f.modalidad === 'domicilio' && <><label>Dirección *</label><input className={err.direccion ? 'invalido' : ''} value={f.direccion} onChange={(e) => set('direccion', e.target.value)} />
-        <label>Tarifa domicilio</label><input type="number" value={f.tarifa} onChange={(e) => set('tarifa', e.target.value)} /></>}
+      <label>Modalidad</label><select aria-label="Modalidad" value={f.modalidad} onChange={(e) => set('modalidad', e.target.value)}><option value="domicilio">Domicilio</option><option value="recoger">Recoger</option></select>
+      {f.modalidad === 'domicilio' && <><label>Dirección *</label><input aria-label="Dirección" className={err.direccion ? 'invalido' : ''} value={f.direccion} onChange={(e) => set('direccion', e.target.value)} />
+        <label>Tarifa domicilio</label><input aria-label="Tarifa de domicilio" type="number" value={f.tarifa} onChange={(e) => set('tarifa', e.target.value)} /></>}
       <label>Método de pago *</label>
-      <select className={err.pago ? 'invalido' : ''} value={f.pago} onChange={(e) => set('pago', e.target.value)}>
+      <select aria-label="Método de pago" className={err.pago ? 'invalido' : ''} value={f.pago} onChange={(e) => set('pago', e.target.value)}>
         {opcionesPago.map((m) => <option key={m}>{m}</option>)}</select>
-      <label>Nota (ej. sin azúcar, evento 30 personas)</label><textarea style={{ minHeight: 70 }} value={f.nota} onChange={(e) => set('nota', e.target.value)} />
+      <label>Nota (ej. sin azúcar, evento 30 personas)</label><textarea aria-label="Nota" style={{ minHeight: 70 }} value={f.nota} onChange={(e) => set('nota', e.target.value)} />
       <div style={{ marginTop: 12 }}><AsyncButton okText="Pedido creado" onClick={guardar}>Crear pedido</AsyncButton></div>
     </div>
   )

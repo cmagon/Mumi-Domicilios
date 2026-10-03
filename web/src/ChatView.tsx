@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase } from './supabase'
 import { AsyncButton, useToast } from './ui'
@@ -173,7 +174,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen, equipo = f
   return (
     <div className="chatview">
       <div className="chat-cab">
-        {onBack && <button className="ghost atras" onClick={onBack} aria-label="Volver">←</button>}
+        {onBack && <button className="ghost atras" onClick={onBack} aria-label="Volver"><ArrowLeft size={20} aria-hidden /></button>}
         <div className="avatar">{(nombre ?? conv?.nombre_wa ?? telefono).slice(0, 1).toUpperCase()}</div>
         <div className="chat-quien"><b>{nombre ?? conv?.nombre_wa ?? telefono}</b><span className="muted">{telefono}</span></div>
         {equipo ? <span className="mini-badge equipo">👥 Equipo</span> : <AsyncButton className={humano ? '' : 'sec'} okText="" onClick={() => tomar(!humano)}>{humano ? '🤖 Devolver al bot' : '🙋 Tomar chat'}</AsyncButton>}
@@ -243,7 +244,7 @@ export default function ChatView({ telefono, nombre, onBack, resumen, equipo = f
               <input ref={archivo} type="file" accept="image/*" hidden onChange={(e) => elegirFoto(e.target.files?.[0])} />
               <button className="sec adjuntar" aria-label="Adjuntar foto" onClick={() => archivo.current?.click()}>📷</button>
               <Grabadora onListo={enviarAudio} onError={(m) => toast(m, 'err')} />
-              <textarea ref={area} rows={1} placeholder="Escribe un mensaje" value={texto}
+              <textarea ref={area} rows={1} aria-label="Escribe un mensaje" placeholder="Escribe un mensaje" value={texto}
                 onChange={(e) => { setTexto(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 900) { e.preventDefault(); void enviar() } }} />
               <AsyncButton className="enviar" okText="" onClick={enviar} disabled={!texto.trim() && !foto}>➤</AsyncButton>

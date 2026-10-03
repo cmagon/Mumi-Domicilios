@@ -294,7 +294,7 @@ function DetallePedido({ pedido: o, comprobante, onClose, onGuardar, onEliminar,
       </>}>
       <p className="muted">Tel {o.cliente_telefono}{o.chat_telefono ? ` · chat ${o.chat_telefono}` : ''} · {o.origen === 'bot' ? 'pedido del bot' : 'pedido manual'}</p>
       <p>{(o.pedido_items ?? []).map((i) => `${i.cantidad} × ${i.productos?.nombre}`).join(' · ')} — <b>{cop(o.total)}</b> ({o.metodo_pago}, {o.pagado ? 'pagado' : 'sin pagar'})</p>
-      {!editable && <p className="muted">El ticket ya se imprimió: puedes ajustar hora, nota y dirección, pero reimprime el ticket para que salga actualizado.</p>}
+      {!editable && <p className="muted">🖨 Ticket ya impreso: reimprímelo después de editar.</p>}
       <div className="row">
         <div><label>Fecha de entrega</label><SelectorFecha valor={f.fecha} onChange={(v) => setF({ ...f, fecha: v })} /></div>
         <div><label>Hora pedida por el cliente</label><HoraPicker valor={f.hora} onChange={(v) => setF({ ...f, hora: v })} placeholder="Sin hora" /></div>

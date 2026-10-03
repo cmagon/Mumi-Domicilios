@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { AsyncButton, Confirmar, useToast, type Confirmacion } from './ui'
+import { AsyncButton, Confirmar, useToast, type Confirmacion, Info } from './ui'
 
 type Img = { id: string; descripcion: string; url: string; tipo: 'image' | 'video'; activo: boolean; creado_en: string }
 
@@ -31,7 +31,7 @@ export default function ImagenesBot() {
   const pendientes = lista.filter((i) => !i.activo)
   return (
     <>
-      <p className="muted">Material con contexto para que el bot lo use en las conversaciones (por ejemplo "así se ven las galletas en una caja"). También puedes enviárselo por WhatsApp desde el número del admin con una imagen y decirle qué es.</p>
+      <Info bloque>Material con contexto para que el bot lo use en las conversaciones (por ejemplo "así se ven las galletas en una caja"). También puedes enviárselo por WhatsApp desde el número del admin con una imagen y decirle qué es.</Info>
       <div className="card" style={{ marginBottom: 12 }}>
         <label>Subir imagen o video</label>
         <input type="file" accept="image/*,video/mp4" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} />

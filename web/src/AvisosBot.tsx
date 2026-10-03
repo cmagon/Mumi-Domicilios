@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { hoy } from './hooks'
-import { AsyncButton, Modal, Switch, useToast } from './ui'
+import { AsyncButton, Modal, Switch, useToast, Info } from './ui'
 import HoraPicker from './HoraPicker'
 
 export type AvisoBot = { id: string; tipo: 'evento' | 'instruccion'; texto: string; fecha_desde: string | null; fecha_hasta: string | null; hora_desde: string | null; hora_hasta: string | null; bloquea_entregas: boolean; estado: string }
@@ -38,7 +38,7 @@ export function AvisoModal({ abierto, fecha, onClose, onGuardado }: { abierto: b
       pie={<><button className="sec" onClick={onClose}>Cancelar</button><AsyncButton okText="Guardado" onClick={guardar}>Guardar aviso</AsyncButton></>}>
       <label>Tipo</label>
       <select value={f.tipo} onChange={(e) => set('tipo', e.target.value)}><option value="evento">Evento (feria, mercado, descanso…)</option><option value="instruccion">Instrucción temporal</option></select>
-      <label>{f.tipo === 'evento' ? 'Qué debe saber el bot (lugar, horario, qué pueden hacer los clientes)' : 'Instrucción para el bot'}</label>
+      <div className="lbl-fila"><label>{f.tipo === 'evento' ? 'Qué debe saber el bot' : 'Instrucción para el bot'}</label><Info>{f.tipo === 'evento' ? 'Lugar, horario y qué pueden hacer los clientes.' : 'Qué debe hacer o decir el bot, y desde/hasta cuándo.'}</Info></div>
       <textarea style={{ minHeight: 80 }} placeholder={f.tipo === 'evento' ? 'Estaremos en el mercado campesino del parque, de 8 a. m. a 2 p. m. Pueden pasar a comprar.' : 'Esta semana ofrece 10 % de descuento en la docena de Cacao'} value={f.texto} onChange={(e) => set('texto', e.target.value)} />
       <div className="row">
         <div><label>Desde {f.tipo === 'evento' ? '*' : '(opcional)'}</label><input type="date" min={hoy()} value={f.desde} onChange={(e) => set('desde', e.target.value)} /></div>
@@ -66,7 +66,7 @@ export default function AvisosBot() {
   }
   return (
     <div className="card"><h2>📣 Avisos temporales del bot</h2>
-      <p className="muted">Eventos o instrucciones con fecha. El bot los usa con los clientes y deja de mencionarlos al pasar la fecha. También puedes crearlos escribiéndole al bot desde tu WhatsApp de administrador: <b>"evento: …"</b> o <b>"instrucción: …"</b> (te pregunta lo que falte). Con <b>"avisos"</b> ves la lista y con <b>"quitar aviso 2"</b> lo retiras.</p>
+      <Info bloque>Eventos o instrucciones con fecha. El bot los usa con los clientes y deja de mencionarlos al pasar la fecha. También puedes crearlos escribiéndole al bot desde tu WhatsApp de administrador: <b>"evento: …"</b> o <b>"instrucción: …"</b> (te pregunta lo que falte). Con <b>"avisos"</b> ves la lista y con <b>"quitar aviso 2"</b> lo retiras.</Info>
       {lista.map((a) => (
         <div className="fila-item" key={a.id} style={{ padding: '8px 0', borderTop: '1px solid var(--bd)' }}>
           <div className="crece"><b>{a.tipo === 'evento' ? '🎪 Evento' : '📝 Instrucción'}</b>{a.fecha_desde && <> · {bonita(a.fecha_desde)}{a.fecha_hasta && a.fecha_hasta !== a.fecha_desde ? ` → ${bonita(a.fecha_hasta)}` : ''}{a.hora_desde ? ` · ${a.hora_desde.slice(0, 5)}${a.hora_hasta ? '–' + a.hora_hasta.slice(0, 5) : ''}` : ''}</>}
