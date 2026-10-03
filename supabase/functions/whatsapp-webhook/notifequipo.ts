@@ -21,7 +21,7 @@ export async function notificarAdmins(sb: SupabaseClient, cfg: Record<string, st
       let id: string | null = null
       if (await ventanaAbierta(sb, tel)) id = await sendText(tel, texto)
       else if (o.template && Deno.env.get(o.template.env)) id = await sendTemplate(tel, Deno.env.get(o.template.env)!, o.template.params)
-      if (id) return tel
+      if (id) { await sb.from('mensajes').insert({ telefono: tel, rol: 'assistant', contenido: texto.slice(0, 1500), wa_id: id }); return tel }
     } catch (e) { console.error('notificarAdmins', tel, e) }
   }
   return null

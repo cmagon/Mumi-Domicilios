@@ -138,6 +138,8 @@ export const TOOLS: Tool[] = [
     parameters: { type: 'object', properties: { resumen: { type: 'string', description: 'Qué preguntó o necesita el cliente' }, nombre: { type: 'string' } }, required: ['resumen'] } },
   { name: 'validar_comprobante', description: 'Valida la última imagen de comprobante enviada por el cliente contra el monto a pagar. Si el cliente ya tiene un pedido activo sin pagar, valida contra el total de ese pedido y lo marca como pagado.',
     parameters: { type: 'object', properties: { monto_esperado: { type: 'integer' } }, required: ['monto_esperado'] } },
+  { name: 'imagenes_del_negocio', description: 'Imágenes y videos con contexto que el equipo guardó (p. ej. cómo se ven las galletas en una caja). Sin parámetros devuelve la lista con su id y descripción; con enviar_ids las prepara para enviar (escribe una frase breve y [[FOTOS]] en un párrafo aparte).',
+    parameters: { type: 'object', properties: { enviar_ids: { type: 'array', items: { type: 'string' }, description: 'ids a enviar al cliente (máx. 3)' } } } },
   { name: 'consultar_ofertas', description: 'Combos y promociones vigentes ahora (qué incluye cada uno, precio y ahorro). Úsala cuando el cliente pregunte por ofertas, promociones, combos o descuentos.',
     parameters: { type: 'object', properties: { enviar_fotos: { type: 'boolean', description: 'true para enviarle la imagen de cada combo (usa [[FOTOS]] en un párrafo aparte)' } } } },
   { name: 'crear_pedido', description: 'Crea el pedido. Solo con todos los datos completos Y cuando el cliente ya dijo explícitamente cómo va a pagar (nunca asumas el método de pago).',
@@ -407,6 +409,18 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
       return { ok: true, instruccion: 'Dile al cliente que no puedes confirmarlo y que alguien del equipo le escribirá; si hay número de atención personalizada, ofrécelo.' }
     }
     case 'marcar_pendiente': ctx.pendiente = String(a.que ?? '').slice(0, 300); return { ok: true }
+    case 'imagenes_del_negocio': {
+      const { data, error } = await sb.from('bot_imagenes').select('id,descripcion,url,tipo').eq('activo', true).order('creado_en', { ascending: false }).limit(40)
+      if (error || !data?.length) return { hay_imagenes: false }
+      const ids: string[] = Array.isArray(a.enviar_ids) ? a.enviar_ids.slice(0, 3).map(String) : []
+      if (ids.length) {
+        const sel = data.filter((x: any) => ids.includes(x.id))
+        if (!sel.length) return { error: 'Esos ids no existen; consulta la lista.' }
+        ctx.fotos = sel.map((x: any) => ({ link: x.url as string, caption: (x.descripcion as string) || '', tipo: x.tipo === 'video' ? 'video' as const : 'image' as const }))
+        return { ok: true, nota: 'Escribe una frase breve y [[FOTOS]] en un párrafo aparte para enviarlas.' }
+      }
+      return { imagenes: data.map((x: any) => ({ id: x.id, tipo: x.tipo, descripcion: x.descripcion })) }
+    }
     case 'consultar_ofertas': {
       const vig = await combosVigentes(sb)
       if (!vig.length) return { hay_ofertas: false, nota: 'Ahora no hay combos ni promociones vigentes. No inventes ofertas.' }
