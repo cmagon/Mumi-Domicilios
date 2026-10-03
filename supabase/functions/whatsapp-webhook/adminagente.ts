@@ -259,17 +259,17 @@ async function destinoCliente(sb: SupabaseClient, admin: string, a: Datos): Prom
 export async function agenteAdmin(sb: SupabaseClient, cfg: Record<string, string>, from: string): Promise<void> {
   const hoy = fechaBogota()
   const hora = new Date().toLocaleTimeString('es-CO', { timeZone: 'America/Bogota', hour: 'numeric', minute: '2-digit', hour12: true })
-  const [{ data: hist }, pend, bor] = await Promise.all([
+  const [{ data: hist }, pend, bor, casos] = await Promise.all([
     sb.from('mensajes').select('rol,contenido').eq('telefono', from).neq('contenido', '…').order('creado_en', { ascending: false }).limit(14),
     pendientesAprendizaje(sb),
     sb.from('admin_borradores').select('datos,actualizado_en').eq('admin_telefono', from).maybeSingle(),
+    casosAbiertos(sb, 8),
   ])
   const accion = bor.data && Date.now() - new Date(bor.data.actualizado_en).getTime() < 30 * 60000 && bor.data.datos?.tipo === 'accion' ? bor.data.datos : null
   const contexto = `[Contexto] Hoy es ${nombreDia(hoy)} (${hoy}), son las ${hora} (hora de Colombia). Días de producción: ${cfg.dias_produccion ?? ''}. Franjas de entrega: ${cfg.franjas_entrega ?? ''}.` +
     (pend.length ? ` Reglas del bot por aprobar: ${pend.length}.` : '') +
     (casos.length ? ` Casos abiertos (avisos de clientes que esperan al admin): ${casos.map((c) => `#${c.caso} ${c.titulo.slice(0, 50)}${c.detalle ? ' — ' + String(c.detalle).slice(0, 70) : ''}`).join(' | ')}. Si el admin dice "respóndele…" sin indicar cuál y hay VARIOS casos, pregúntale a cuál (por número o nombre); si hay uno solo, es ese.` : '') +
     (accion ? ` ACCIÓN EN ESPERA DE CONFIRMACIÓN: ${accion.resumen} (el admin debe responder "sí" o "no"; si cambia de idea o corrige algo, llama de nuevo la herramienta con los datos correctos).` : '')
-  const casos = await casosAbiertos(sb, 8)
   const turnos = compactar([...(hist ?? [])].reverse() as { rol: string; contenido: string }[])
   const st: Estado = { respondido: false }
   try {

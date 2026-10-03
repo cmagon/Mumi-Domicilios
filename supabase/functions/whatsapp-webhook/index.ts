@@ -127,7 +127,11 @@ async function manejar(msg: any, nombreWA?: string) {
   }
 
   // Equipo: nunca entra al flujo de clientes (ni comprobantes, ni seguimientos, ni notificaciones)
-  if (admins.includes(from) || from === domi) { await manejarEquipo(msg, from, cfg, admins.includes(from)); return }
+  if (admins.includes(from) || from === domi) {
+    // Un fallo aquí nunca debe tratarse como si fuera un cliente (ni mandarle mensajes de cliente): se registra y se avisa en el lenguaje del equipo
+    try { await manejarEquipo(msg, from, cfg, admins.includes(from)) } catch (e) { console.error('manejarEquipo', e); await sendText(from, 'Ups, tuve un error interno procesando eso 🙈 Ya quedó registrado; intenta de nuevo en un momento.').catch(() => null) }
+    return
+  }
 
   let texto = ''
   let comprobantePath: string | null = null
