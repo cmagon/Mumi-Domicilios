@@ -2,12 +2,38 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { downloadMedia, sendText } from './wa.ts'
 import { agenteAdmin } from './adminagente.ts'
+import { chatDeCaso, despuesDeResponder, ventanaCliente } from './casos.ts'
+import { sendImage, sendVideo } from './wa.ts'
 
 const sinAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 
 export async function mediaAdmin(sb: SupabaseClient, msg: any, from: string): Promise<boolean> {
   const m = msg.type === 'image' ? msg.image : msg.type === 'video' ? msg.video : msg.type === 'document' ? msg.document : null
   if (!m?.id) return false
+  // Con número de caso en el pie ("12" o "12: texto"): se envía tal cual al cliente de ese caso, sin IA
+  const caso = String(m.caption ?? '').trim().match(/^(?:caso\s*)?#?(\d{1,7})\s*[:>\-–]?\s*([\s\S]*)$/i)
+  if (caso) {
+    try {
+      const c = await chatDeCaso(sb, Number(caso[1]))
+      if (!c) { await sendText(from, `No encontré el caso #${caso[1]}. Escribe "casos" para ver los abiertos.`); return true }
+      if (!(await ventanaCliente(sb, c.telefono))) { await sendText(from, `El caso #${caso[1]} lleva más de 24 h sin escribir: WhatsApp no permite enviarle mensajes libres.`); return true }
+      const { bytes, mime } = await downloadMedia(m.id)
+      const video = mime.startsWith('video/')
+      if (!video && !mime.startsWith('image/')) { await sendText(from, 'Solo puedo enviar imágenes o videos MP4 🙏'); return true }
+      const ext = (mime.split('/')[1] ?? 'jpg').split(';')[0].replace('jpeg', 'jpg')
+      const path = `respuestas/${c.telefono}-${Date.now()}.${ext}`
+      const { error: eu } = await sb.storage.from('catalogo').upload(path, bytes, { contentType: mime })
+      if (eu) { await sendText(from, `No pude subir el archivo: ${eu.message}`); return true }
+      const url = sb.storage.from('catalogo').getPublicUrl(path).data.publicUrl
+      const texto = caso[2].trim() || undefined
+      const id = video ? await sendVideo(c.telefono, url, texto) : await sendImage(c.telefono, url, texto)
+      if (!id) { await sendText(from, 'WhatsApp no aceptó el archivo 🙈'); return true }
+      await despuesDeResponder(sb, c.telefono, `[${video ? 'Video' : 'Imagen'} enviad${video ? 'o' : 'a'} por el equipo${texto ? ': ' + texto : ''}]`, id)
+      await sb.from('mensajes').update({ contenido: `[El admin envió un archivo al caso #${caso[1]}]` }).eq('wa_id', msg.id)
+      await sendText(from, `✅ Enviado a ${c.nombre ?? c.telefono} (caso #${caso[1]}). El bot sigue con ese chat.`)
+    } catch (e) { console.error('mediaAdmin caso', e); await sendText(from, 'No pude enviarlo 🙈 ¿lo intentas de nuevo?') }
+    return true
+  }
   const cap = String(m.caption ?? '').trim().match(/^(foto|imagen|video|nuevo(?:\s+producto|\s+sabor)?)\s*:\s*([\s\S]+)$/i)
   if (!cap) {
     // Sin prefijo: se guarda como material pendiente y el asistente decide con lo que dijo el admin (guardarlo con contexto, ponerlo a un producto o enviárselo a un cliente)

@@ -104,10 +104,18 @@ async function pedidoObjetivo(sb: SupabaseClient, chat: string, numero?: number)
   if (l.length > 1) return { error: `El cliente tiene ${l.length} pedidos activos (${l.map((x) => `#${x.numero}${x.direccion ? ' a ' + x.direccion : ''}`).join('; ')}). Pregúntale a cuál se refiere y vuelve a llamar con pedido_numero.` }
   return { p: l[0] }
 }
-export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, detalle?: string, pedido_id?: string | null, telefono?: string, wa = true) {
-  await sb.from('notificaciones').insert({ tipo, titulo, detalle: detalle ?? null, pedido_id: pedido_id ?? null, telefono: telefono ?? null })
+export async function avisar(sb: SupabaseClient, tipo: string, titulo: string, detalle?: string, pedido_id?: string | null, telefono?: string, wa = true): Promise<{ caso?: number; nuevo: boolean } | undefined> {
+  // Si ya hay un aviso igual sin atender de ese chat (últimas 3 h), no se repite: evita llenar al admin de notificaciones por el mismo cliente
+  if (telefono && ['atencion', 'sin_respuesta', 'pedido_grande'].includes(tipo)) {
+    const { data: ya } = await sb.from('notificaciones').select('id,caso').eq('telefono', telefono).eq('tipo', tipo).eq('leida', false)
+      .gte('creado_en', new Date(Date.now() - 3 * 3600 * 1000).toISOString()).limit(1).maybeSingle()
+    if (ya) return { caso: ya.caso ? Number(ya.caso) : undefined, nuevo: false }
+  }
+  let { data: n, error } = await sb.from('notificaciones').insert({ tipo, titulo, detalle: detalle ?? null, pedido_id: pedido_id ?? null, telefono: telefono ?? null }).select('id,caso').single()
+  if (error) ({ data: n } = await sb.from('notificaciones').insert({ tipo, titulo, detalle: detalle ?? null, pedido_id: pedido_id ?? null, telefono: telefono ?? null }).select('id').single()) // migración 0047 pendiente
   await pushAdmin(sb, titulo, detalle ?? '', { tag: 'aviso', url: '/chats' })
-  if (wa) await avisoAdminWA(sb, titulo, detalle, telefono) // también por WhatsApp si la ventana del admin está abierta
+  if (wa) await avisoAdminWA(sb, titulo, detalle, telefono, { tipo, id: n?.id, caso: (n as { caso?: number } | null)?.caso }) // también por WhatsApp (agrupado si hay mucho movimiento)
+  return { caso: (n as { caso?: number } | null)?.caso ? Number((n as { caso?: number }).caso) : undefined, nuevo: true }
 }
 
 export type Ctx = {
@@ -438,12 +446,12 @@ export async function ejecutar(name: string, a: Record<string, any>, ctx: Ctx): 
         return { ok: false, error: 'Faltan datos: pide al cliente su nombre completo, teléfono de contacto y qué necesita, y vuelve a llamar.' }
       await sb.from('conversaciones').upsert({ telefono: ctx.telefono, humano: true, humano_desde: new Date().toISOString(), actualizado_en: new Date().toISOString() })
       ctx.humano = true
-      await avisar(sb, a.motivo === 'pedido_grande_evento' ? 'pedido_grande' : 'atencion', `Atención humana: ${a.nombre}`, `${a.telefono_contacto} · ${a.motivo}: ${a.resumen}`, null, ctx.telefono, false) // el aviso por WhatsApp a los admins ya se envía abajo
+      // El aviso por WhatsApp va numerado (caso #N) y agrupado si hay mucho movimiento (ver avisoAdminWA); si nadie tiene la ventana abierta se usa la plantilla
+      const av = await avisar(sb, a.motivo === 'pedido_grande_evento' ? 'pedido_grande' : 'atencion', `Atención humana: ${a.nombre}`, `${a.telefono_contacto} · ${a.motivo}: ${a.resumen}`, null, ctx.telefono)
       const motivos: Record<string, string> = { pedido_grande_evento: 'Pedido grande o evento', personalizacion: 'Personalización',
         queja_reclamo: 'Queja o reclamo', otro: 'Otro' }
       const motivo = motivos[a.motivo] ?? 'Otro'
-      await notificarAdmins(sb, cfg, `⚠️ Atención humana requerida\nCliente: ${a.nombre}\nTeléfono: ${a.telefono_contacto}\nMotivo: ${motivo}\nDetalle: ${a.resumen}\nChat: ${ctx.telefono}\n\nEl bot se reactiva solo en ${cfg.horas_humano || 12} h. Antes: reanudar ${ctx.telefono}`,
-        { template: { env: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen] } }) // principal primero; si no, el secundario
+      if (av?.nuevo) await notificarAdmins(sb, cfg, '', { soloPlantilla: true, template: { env: 'WA_TEMPLATE_ADMIN', params: [a.nombre, a.telefono_contacto, motivo, a.resumen] } })
       return { ok: true, instruccion: 'Avisa al cliente que en un momento le escribe alguien del equipo. No sigas respondiendo.' }
     }
   }

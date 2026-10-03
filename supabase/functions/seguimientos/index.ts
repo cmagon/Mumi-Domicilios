@@ -9,7 +9,7 @@ import { sendText } from '../whatsapp-webhook/wa.ts'
 import { TZ } from '../whatsapp-webhook/tools.ts'
 import { sinNumeroPedido } from '../whatsapp-webhook/texto.ts'
 import { humanoTardo } from '../whatsapp-webhook/humano.ts'
-import { resumenAdmin } from '../whatsapp-webhook/adminresumen.ts'
+import { digestAdmin, resumenAdmin } from '../whatsapp-webhook/adminresumen.ts'
 import { depurarChats } from '../whatsapp-webhook/retencion.ts'
 import { analizarSesiones, aprenderDeSesiones, aprenderDelEquipo } from '../whatsapp-webhook/analisis.ts'
 
@@ -33,6 +33,7 @@ Deno.serve(async (req) => {
   }
   // 1b) Resúmenes al administrador (6 p. m. y antes de que se cierre su ventana de 24 h)
   await resumenAdmin(sb, cfg).catch((e) => console.error('resumenAdmin', e))
+  await digestAdmin(sb, cfg).catch((e) => console.error('digestAdmin', e)) // avisos agrupados cuando hubo mucho movimiento
   // 1c) Avisos conversacionales viejos (más de 48 h) que nadie cerró: se ocultan solos
   await sb.from('notificaciones').update({ leida: true }).eq('leida', false).in('tipo', ['atencion', 'sin_respuesta', 'pedido_grande', 'sin_stock'])
     .lt('creado_en', new Date(Date.now() - 48 * 3600 * 1000).toISOString()).not('titulo', 'like', 'Falta la dirección%')

@@ -9,6 +9,7 @@ import { fechaBogota } from './tools.ts'
 import { ejecutarCancelacion, reporteDia, vistaCancelacion } from './adminresumen.ts'
 import { comandoAviso } from './avisos.ts'
 import { flujoPedido } from './adminpedido.ts'
+import { casosAbiertos, chatDeCaso, despuesDeResponder, ventanaCliente } from './casos.ts'
 
 export const PROMPT_ADMIN_DEFAULT = `# ROL
 Eres el asistente interno de Mumi (galletas y repostería artesanal por WhatsApp) para la administración y los socios. Este chat es el canal OFICIAL para recibir sus órdenes y modificar aspectos del negocio. La persona que te escribe es del equipo, NUNCA un cliente: no vendas, no ofrezcas el catálogo, no la saludes como comprador ni le pidas datos de pedido.
@@ -49,8 +50,8 @@ export const HERRAMIENTAS: Tool[] = [
   { name: 'aviso_temporal', description: 'Crea una instrucción o aviso temporal para el bot de ventas (eventos, cambios de horario, promociones, disponibilidad). Ya le responde al admin con el resultado.', parameters: { type: 'object', properties: { texto: { type: 'string', description: 'Lo que dijo el admin, completo y con fechas/horas si las dio' } }, required: ['texto'] } },
   { name: 'tomar_pedido', description: 'Cuando el admin dicta un pedido para otra persona: arma el borrador, pregunta lo que falte y pide confirmación. Ya le responde al admin.', parameters: { type: 'object', properties: { texto: { type: 'string', description: 'El pedido tal como lo dictó, completo' } }, required: ['texto'] } },
   { name: 'gestionar_aprendizajes', description: 'Reglas que el bot propone aprender y esperan aprobación del admin. accion: listar | aprobar | descartar. Los números son los de la lista.', parameters: { type: 'object', properties: { accion: { type: 'string', enum: ['listar', 'aprobar', 'descartar'] }, numeros: { type: 'array', items: { type: 'number' } }, todos: { type: 'boolean' } }, required: ['accion'] } },
-  { name: 'responder_cliente', description: 'Responde a un cliente en su chat con el texto que el admin indicó (redáctalo breve, cálido y con el tono del bot, sin datos internos ni números de pedido). Sin teléfono usa el último chat por el que avisaste al admin. Le llega al cliente como respuesta normal y el bot sigue atendiendo después. Solo funciona si el cliente escribió en las últimas 24 h.', parameters: { type: 'object', properties: { texto: { type: 'string' }, telefono: { type: 'string', description: 'Teléfono del chat (opcional: por defecto el último aviso)' } }, required: ['texto'] } },
-  { name: 'enviar_imagen_a_cliente', description: 'Envía a un cliente una imagen o video que el admin mandó (por id), con un texto opcional. Sin teléfono usa el último chat por el que avisaste al admin.', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, texto: { type: 'string' }, telefono: { type: 'string' } }, required: ['imagen_id'] } },
+  { name: 'responder_cliente', description: 'Responde a un cliente en su chat con el texto que el admin indicó (redáctalo breve, cálido y con el tono del bot, sin datos internos ni números de pedido). Sin teléfono usa el último chat por el que avisaste al admin. Le llega al cliente como respuesta normal y el bot sigue atendiendo después. Solo funciona si el cliente escribió en las últimas 24 h.', parameters: { type: 'object', properties: { texto: { type: 'string' }, caso: { type: 'number', description: 'Número de caso (#12) del aviso' }, telefono: { type: 'string', description: 'Teléfono del chat (si no hay caso)' } }, required: ['texto'] } },
+  { name: 'enviar_imagen_a_cliente', description: 'Envía a un cliente una imagen o video que el admin mandó (por id), con un texto opcional. Sin teléfono usa el último chat por el que avisaste al admin.', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, texto: { type: 'string' }, caso: { type: 'number' }, telefono: { type: 'string' } }, required: ['imagen_id'] } },
   { name: 'guardar_imagen_bot', description: 'Guarda una imagen/video recibida en la biblioteca del bot con su contexto (qué es y cuándo usarla), para que el bot la use en las conversaciones. Ej.: "así se ven las galletas en una caja".', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, descripcion: { type: 'string', description: 'Contexto claro y corto' } }, required: ['imagen_id', 'descripcion'] } },
   { name: 'asignar_imagen_producto', description: 'Agrega una imagen recibida a un producto del catálogo; con principal=true pasa a ser su foto principal (actualizar la foto).', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, sabor: { type: 'string' }, principal: { type: 'boolean' } }, required: ['imagen_id', 'sabor'] } },
   { name: 'listar_imagenes_bot', description: 'Imágenes y videos guardados en la biblioteca del bot.', parameters: { type: 'object', properties: {} } },
@@ -182,8 +183,8 @@ async function herramienta(sb: SupabaseClient, cfg: Record<string, string>, from
       return { ok: true, [a.accion === 'aprobar' ? 'aprobadas' : 'descartadas']: objetivo.map((x) => x.regla), quedan_pendientes: l.length - objetivo.length }
     }
     case 'responder_cliente': {
-      const tel = String(a.telefono ?? '').replace(/\D/g, '') || (await ultimoChatAviso(sb, from)) || ''
-      if (!tel) return { error: 'No sé a qué cliente responder: pídele al admin el teléfono del chat.' }
+      const tel = await destinoCliente(sb, from, a)
+      if (!tel) return { error: 'No sé a qué cliente responder: hay varios casos abiertos o ninguno. Pregúntale al admin el número de caso (#) o el nombre.' }
       if (!(await ventanaCliente(sb, tel))) return { ventana_cerrada: true, error: 'Pasaron más de 24 h desde el último mensaje de ese cliente: WhatsApp no permite escribirle hasta que él escriba.' }
       const texto = String(a.texto ?? '').trim()
       if (!texto) return { error: 'Falta el texto' }
@@ -193,8 +194,8 @@ async function herramienta(sb: SupabaseClient, cfg: Record<string, string>, from
       return { ok: true, enviado_a: tel, nota: 'Ya se envió al cliente; el bot sigue atendiendo ese chat.' }
     }
     case 'enviar_imagen_a_cliente': {
-      const tel = String(a.telefono ?? '').replace(/\D/g, '') || (await ultimoChatAviso(sb, from)) || ''
-      if (!tel) return { error: 'No sé a qué cliente enviársela: pídele al admin el teléfono del chat.' }
+      const tel = await destinoCliente(sb, from, a)
+      if (!tel) return { error: 'No sé a qué cliente enviársela: hay varios casos abiertos o ninguno. Pregúntale al admin el número de caso (#) o el nombre.' }
       if (!(await ventanaCliente(sb, tel))) return { ventana_cerrada: true, error: 'Pasaron más de 24 h desde el último mensaje de ese cliente.' }
       const { data: im } = await sb.from('bot_imagenes').select('url,tipo').eq('id', String(a.imagen_id)).maybeSingle()
       if (!im) return { error: 'No encontré esa imagen' }
@@ -244,15 +245,15 @@ export async function ultimoChatAviso(sb: SupabaseClient, admin: string): Promis
   for (const m of data ?? []) { const x = String(m.contenido).match(/Chat(?: del cliente)?:\s*(\d{10,15})/); if (x) return x[1] }
   return null
 }
-async function ventanaCliente(sb: SupabaseClient, tel: string) {
-  const { data } = await sb.from('mensajes').select('creado_en').eq('telefono', tel).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
-  return !!data && Date.now() - new Date(data.creado_en).getTime() < 23.5 * 3600 * 1000
-}
-// Respuesta enviada al cliente por orden del admin: queda en su chat como mensaje del bot, se cierran los avisos de atención y el bot sigue atendiendo
-async function despuesDeResponder(sb: SupabaseClient, tel: string, contenido: string, waId: string) {
-  await sb.from('mensajes').insert({ telefono: tel, rol: 'assistant', contenido, wa_id: waId })
-  await sb.from('conversaciones').upsert({ telefono: tel, humano: false, humano_desde: null, actualizado_en: new Date().toISOString() }, { onConflict: 'telefono' })
-  await sb.from('notificaciones').update({ leida: true }).eq('telefono', tel).eq('leida', false).in('tipo', ['atencion', 'sin_respuesta', 'pedido_grande'])
+// A qué cliente va la respuesta: número de caso > teléfono > único caso abierto (con varios abiertos, hay que preguntar)
+async function destinoCliente(sb: SupabaseClient, admin: string, a: Datos): Promise<string | null> {
+  if (a.caso) return (await chatDeCaso(sb, Number(a.caso)))?.telefono ?? null
+  const t = String(a.telefono ?? '').replace(/\D/g, '')
+  if (t) return t
+  const abiertos = await casosAbiertos(sb, 5)
+  if (abiertos.length === 1) return abiertos[0].telefono
+  if (abiertos.length === 0) return await ultimoChatAviso(sb, admin)
+  return null
 }
 
 export async function agenteAdmin(sb: SupabaseClient, cfg: Record<string, string>, from: string): Promise<void> {
@@ -266,9 +267,9 @@ export async function agenteAdmin(sb: SupabaseClient, cfg: Record<string, string
   const accion = bor.data && Date.now() - new Date(bor.data.actualizado_en).getTime() < 30 * 60000 && bor.data.datos?.tipo === 'accion' ? bor.data.datos : null
   const contexto = `[Contexto] Hoy es ${nombreDia(hoy)} (${hoy}), son las ${hora} (hora de Colombia). Días de producción: ${cfg.dias_produccion ?? ''}. Franjas de entrega: ${cfg.franjas_entrega ?? ''}.` +
     (pend.length ? ` Reglas del bot por aprobar: ${pend.length}.` : '') +
-    (chatAviso ? ` Último chat de cliente por el que le avisaste al admin: ${chatAviso} (a ese responde si dice "respóndele…" sin dar teléfono).` : '') +
+    (casos.length ? ` Casos abiertos (avisos de clientes que esperan al admin): ${casos.map((c) => `#${c.caso} ${c.titulo.slice(0, 50)}${c.detalle ? ' — ' + String(c.detalle).slice(0, 70) : ''}`).join(' | ')}. Si el admin dice "respóndele…" sin indicar cuál y hay VARIOS casos, pregúntale a cuál (por número o nombre); si hay uno solo, es ese.` : '') +
     (accion ? ` ACCIÓN EN ESPERA DE CONFIRMACIÓN: ${accion.resumen} (el admin debe responder "sí" o "no"; si cambia de idea o corrige algo, llama de nuevo la herramienta con los datos correctos).` : '')
-  const chatAviso = await ultimoChatAviso(sb, from)
+  const casos = await casosAbiertos(sb, 8)
   const turnos = compactar([...(hist ?? [])].reverse() as { rol: string; contenido: string }[])
   const st: Estado = { respondido: false }
   try {

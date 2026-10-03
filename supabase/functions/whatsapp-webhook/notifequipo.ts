@@ -14,14 +14,15 @@ export async function ventanaAbierta(sb: SupabaseClient, tel: string): Promise<b
 
 // Devuelve el número al que se logró notificar (o null si a ninguno). `template`: plantilla aprobada para cuando la ventana está cerrada.
 export async function notificarAdmins(sb: SupabaseClient, cfg: Record<string, string>, texto: string,
-  o: { excluir?: string | null; template?: { env: string; params: string[] } } = {}): Promise<string | null> {
+  o: { excluir?: string | null; soloPlantilla?: boolean; template?: { env: string; params: string[] } } = {}): Promise<string | null> {
   for (const tel of numerosAdmin(cfg)) {
     if (tel === o.excluir) continue
     try {
       let id: string | null = null
-      if (await ventanaAbierta(sb, tel)) id = await sendText(tel, texto)
+      if (!o.soloPlantilla && await ventanaAbierta(sb, tel)) id = await sendText(tel, texto)
+      else if (o.soloPlantilla && await ventanaAbierta(sb, tel)) return tel // ya se avisó por texto
       else if (o.template && Deno.env.get(o.template.env)) id = await sendTemplate(tel, Deno.env.get(o.template.env)!, o.template.params)
-      if (id) { await sb.from('mensajes').insert({ telefono: tel, rol: 'assistant', contenido: texto.slice(0, 1500), wa_id: id }); return tel }
+      if (id) { if (texto) await sb.from('mensajes').insert({ telefono: tel, rol: 'assistant', contenido: texto.slice(0, 1500), wa_id: id }); return tel }
     } catch (e) { console.error('notificarAdmins', tel, e) }
   }
   return null

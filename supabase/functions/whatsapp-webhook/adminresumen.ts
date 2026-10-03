@@ -91,14 +91,48 @@ No había pedidos activos para cancelar.`
 // ---- Avisos al WhatsApp del admin aprovechando su ventana de 24 h abierta ----
 // Cada aviso nuevo (pago, comprobante, atención, cambio…) se le envía también por WhatsApp si él escribió al bot en las últimas 24 h
 // (así la "puerta" siempre abierta sirve de notificación). Si la ventana está cerrada, queda el aviso del micrositio y la notificación push.
-export async function avisoAdminWA(sb: SupabaseClient, titulo: string, detalle?: string | null, chat?: string | null): Promise<void> {
+const URGENTES = new Set(['atencion', 'sin_respuesta', 'pedido_grande', 'pago_revision', 'cancelacion'])
+const ESPERA_URGENTE_S = 120 // entre un aviso por WhatsApp y el siguiente
+const ESPERA_RESUMEN_MIN = 30 // los avisos no urgentes se agrupan y se envían como mucho cada 30 min
+
+// Reserva el "turno" de envío (evita que varios avisos simultáneos salgan a la vez). Devuelve true si se puede enviar ahora.
+async function turnoDeEnvio(sb: SupabaseClient, esperaSeg: number): Promise<boolean> {
+  const { data } = await sb.from('config').select('valor').eq('clave', 'admin_wa_ultimo').maybeSingle()
+  const ult = Number(data?.valor ?? 0)
+  if (Date.now() - ult < esperaSeg * 1000) return false
+  await sb.from('config').upsert({ clave: 'admin_wa_ultimo', valor: String(Date.now()) }, { onConflict: 'clave' })
+  return true
+}
+const linea = (n: { caso?: number | null; titulo: string; detalle?: string | null; telefono?: string | null }) =>
+  `${n.caso ? `#${n.caso} ` : ''}${n.titulo}${n.detalle ? ` — ${String(n.detalle).slice(0, 110)}` : ''}${n.telefono ? ` (chat ${n.telefono})` : ''}`
+
+// Aviso nuevo al WhatsApp del admin. Cada aviso de chat lleva su número de caso (#12). Para no inundarlo cuando hay muchos clientes a la vez:
+// los urgentes salen de inmediato solo si pasaron 2 min desde el último; el resto queda pendiente y se agrupa en un único resumen (ver digestAdmin).
+export async function avisoAdminWA(sb: SupabaseClient, titulo: string, detalle?: string | null, chat?: string | null, o: { tipo?: string; id?: string; caso?: number } = {}): Promise<void> {
   try {
     const { data: c } = await sb.from('config').select('clave,valor').in('clave', ['admin_numeros', 'avisos_whatsapp_admin'])
     const cfg = Object.fromEntries((c ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>
-    if (cfg.avisos_whatsapp_admin === 'no') return
-    // En orden: primero el número principal; si su ventana está cerrada, el secundario
-    await notificarAdmins(sb, cfg, `🔔 ${titulo}${detalle ? `\n${String(detalle).slice(0, 400)}` : ''}${chat ? `\n💬 Chat del cliente: ${chat}` : ''}\n\nLo ves también en el micrositio.`, { excluir: chat })
+    if (cfg.avisos_whatsapp_admin === 'no') { if (o.id) await sb.from('notificaciones').update({ wa_enviado_en: new Date().toISOString() }).eq('id', o.id); return }
+    if (!(!o.tipo || URGENTES.has(o.tipo)) || !(await turnoDeEnvio(sb, ESPERA_URGENTE_S))) return // queda pendiente para el resumen agrupado
+    const texto = `🔔 ${o.caso ? `Caso #${o.caso} — ` : ''}${titulo}${detalle ? `\n${String(detalle).slice(0, 400)}` : ''}${chat ? `\n💬 Chat: ${chat}` : ''}\n\n${o.caso ? `Para responderle: "${o.caso}: tu mensaje" (o cita este aviso). ` : ''}Lo ves también en el micrositio.`
+    const ok = await notificarAdmins(sb, cfg, texto, { excluir: chat })
+    if (ok && o.id) await sb.from('notificaciones').update({ wa_enviado_en: new Date().toISOString() }).eq('id', o.id)
   } catch (e) { console.error('avisoAdminWA', e) }
+}
+
+// Resumen agrupado de los avisos pendientes de enviar por WhatsApp (lo llama el cron): una sola notificación, con números de caso para responder
+export async function digestAdmin(sb: SupabaseClient, cfg: Record<string, string>): Promise<boolean> {
+  if (cfg.avisos_whatsapp_admin === 'no') return false
+  const { data: pend, error } = await sb.from('notificaciones').select('id,tipo,titulo,detalle,telefono,caso').is('wa_enviado_en', null).eq('leida', false)
+    .gte('creado_en', new Date(Date.now() - 24 * 3600 * 1000).toISOString()).order('creado_en').limit(40)
+  if (error || !pend?.length) return false
+  const hayUrgente = pend.some((n) => URGENTES.has(n.tipo))
+  if (!(await turnoDeEnvio(sb, hayUrgente ? ESPERA_URGENTE_S : ESPERA_RESUMEN_MIN * 60))) return false
+  const lineas = pend.slice(0, 12).map((n) => `• ${linea(n)}`)
+  const texto = `📋 ${pend.length} aviso${pend.length === 1 ? '' : 's'} pendiente${pend.length === 1 ? '' : 's'}:\n${lineas.join('\n')}${pend.length > 12 ? `\n… y ${pend.length - 12} más (mira "casos" o el micrositio)` : ''}\n\nResponde con "número: mensaje" (ej. "12: sí, claro"), cita un aviso, o "cerrar 12". "casos" lista los abiertos.`
+  const ok = await notificarAdmins(sb, cfg, texto)
+  if (ok) await sb.from('notificaciones').update({ wa_enviado_en: new Date().toISOString() }).in('id', pend.map((n) => n.id))
+  return !!ok
 }
 
 // Resumen de aprendizaje del día: lo que el bot integró solo (mejoras sencillas) y lo que espera aprobación

@@ -10,6 +10,7 @@ import { comandoAviso, contextoAvisos } from './avisos.ts'
 import { mediaAdmin } from './adminmedia.ts'
 import { asistenteAdmin } from './adminpedido.ts'
 import { conversarEquipo } from './equipo.ts'
+import { comandoCasos } from './casos.ts'
 import { avisoAdminWA } from './adminresumen.ts'
 import { apiKey, construirProveedor } from './config.ts'
 import { digits, downloadMedia, marcarLeido, sendImage, sendLocation, sendText, sendVideo, verifySignature } from './wa.ts'
@@ -89,8 +90,13 @@ async function manejarEquipo(msg: any, from: string, cfg: Record<string, string>
     await sendText(from, esAdmin ? 'Recibí el archivo 📎 pero no es una foto para el catálogo. Para subir una foto o video escribe en el pie: "foto: Cacao" (producto existente) o "nuevo: Nombre, precio, descripción".' : 'Recibí tu archivo 📎. Si necesitas algo, escríbeme.')
     return
   } else return // stickers, reacciones, etc.: sin respuesta
+  // Si el admin responde CITANDO un aviso, el asistente sabe a qué caso se refiere
+  if (esAdmin && msg.context?.id) {
+    const { data: q } = await sb.from('mensajes').select('contenido').eq('wa_id', msg.context.id).maybeSingle()
+    if (q?.contenido) texto = `[El admin responde citando este aviso: «${String(q.contenido).slice(0, 500)}»] ${texto}`
+  }
   await sb.from('mensajes').update({ contenido: texto }).eq('wa_id', msg.id)
-  if (esAdmin) { if (!(await comandoAdmin(from, texto, cfg)) && !(await comandoAviso(sb, cfg, from, texto))) await asistenteAdmin(sb, cfg, from, texto); return }
+  if (esAdmin) { if (!(await comandoCasos(sb, from, texto)) && !(await comandoAdmin(from, texto, cfg)) && !(await comandoAviso(sb, cfg, from, texto))) await asistenteAdmin(sb, cfg, from, texto); return }
   if (await comandoDomiciliario(from, texto)) return
   await conversarEquipo(sb, cfg, from, texto, 'domiciliario')
 }
@@ -159,9 +165,9 @@ async function manejar(msg: any, nombreWA?: string) {
         await sb.from('pedidos').update({ comprobante_url: comprobantePath }).eq('id', p.id)
         const aviso = { tipo: 'pago_revision', titulo: `Posible comprobante — pedido #${p.numero}`, pedido_id: p.id, telefono: from,
           detalle: `El cliente envió una imagen y el pedido tiene el pago pendiente ($${p.total} por ${p.metodo_pago ?? 'transferencia'}). Verifica el soporte y confirma el pago.${sinPagar.length > 1 ? ` También tiene pendientes: ${sinPagar.slice(1).map((x: any) => '#' + x.numero).join(', ')}.` : ''}` }
-        const { error: ea } = await sb.from('notificaciones').insert({ ...aviso, media_path: comprobantePath })
-        if (ea) await sb.from('notificaciones').insert(aviso) // por si la migración 0025 aún no se corrió
-        await avisoAdminWA(sb, aviso.titulo, aviso.detalle, from)
+        let { data: nIns, error: ea } = await sb.from('notificaciones').insert({ ...aviso, media_path: comprobantePath }).select('id,caso').single()
+        if (ea) ({ data: nIns } = await sb.from('notificaciones').insert(aviso).select('id').single()) // por si las migraciones 0025/0047 aún no se corrieron
+        await avisoAdminWA(sb, aviso.titulo, aviso.detalle, from, { tipo: 'pago_revision', id: nIns?.id, caso: (nIns as { caso?: number } | null)?.caso })
         texto += ` [Sistema: el cliente tiene el pedido #${p.numero} con el pago pendiente. La imagen ya se adjuntó al pedido y se avisó al equipo para que verifique el pago. Agradécele, dile que recibiste el comprobante y que el equipo lo verifica y le confirma. NO marques el pedido como pagado ni pidas más datos de pago.]`
       }
     } else if (msg.type === 'location') {
