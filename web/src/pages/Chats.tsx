@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, BarChart3 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useEnVivo } from '../enVivo'
@@ -103,8 +104,8 @@ export default function Chats() {
       <div className="col-lista">
         <div className="lista-cab">
           <div className="fila">
-            <input style={{ flex: 1 }} placeholder="Buscar chat" value={q} onChange={(e) => setQ(e.target.value)} />
-            <button className="sec sm" onClick={() => setAnalisis(true)}>📊</button>
+            <input style={{ flex: 1 }} aria-label="Buscar chat" placeholder="Buscar chat" value={q} onChange={(e) => setQ(e.target.value)} />
+            <button className="sec sm" onClick={() => setAnalisis(true)} aria-label="Análisis de conversaciones" title="Análisis de conversaciones"><BarChart3 size={18} aria-hidden /></button>
           </div>
           <div className="mini-kpi">
             <span><b>{lista.length}</b> chats</span><span><b>{Math.round((nVenta / cerradas) * 100)}%</b> venta</span>
@@ -206,13 +207,18 @@ function Generales({ onBack, onCambio }: { onBack: () => void; onCambio: () => v
   useEffect(() => { c() }, [c])
   const leer = async (id: string) => { await supabase.from('notificaciones').update({ leida: true }).eq('id', id); c(); onCambio() }
   return (
-    <div className="chatview"><div className="chat-cab"><button className="ghost atras" onClick={onBack}>←</button><b>Avisos generales</b></div>
+    <div className="chatview"><div className="chat-cab"><button className="ghost atras" onClick={onBack} aria-label="Volver"><ArrowLeft size={20} aria-hidden /></button><b>Avisos generales</b></div>
       <div className="avisos-chat" style={{ maxHeight: 'none', flex: 1 }}>
         {av.map((a) => <div className="aviso-item" key={a.id}><span className="aviso-ico">{ICONO_AVISO[a.tipo] ?? '🔔'}</span>
           <div className="aviso-txt"><b>{a.titulo}</b><div className="muted">{a.detalle}</div></div><button className="sec sm" onClick={() => leer(a.id)}>Listo</button></div>)}
         {!av.length && <p className="muted">Sin avisos pendientes.</p>}
       </div></div>
   )
+}
+
+function Barras({ datos, mapa }: { datos: [string, number][]; mapa: Record<string, string> }) {
+  const max = Math.max(1, ...datos.map((d) => d[1]))
+  return <div className="barras">{datos.map(([k, n]) => (<div className="barra-fila" key={k}><span>{mapa[k] ?? k}</span><div className="pista"><div className="relleno" style={{ width: `${(n / max) * 100}%` }} /></div><b>{n}</b></div>))}</div>
 }
 
 function Analisis({ abierto, onClose, ses, recargar, toast }: { abierto: boolean; onClose: () => void; ses: S[]; recargar: () => void; toast: ReturnType<typeof useToast> }) {
@@ -224,10 +230,6 @@ function Analisis({ abierto, onClose, ses, recargar, toast }: { abierto: boolean
     const { data, error } = await supabase.functions.invoke('analizar-chats', { body: { limite: 10 } })
     if (error || !data?.ok) { toast(data?.error ?? error?.message ?? 'No se pudo analizar', 'err'); return false }
     toast(`${data.analizadas} analizada(s)`, 'info'); recargar()
-  }
-  const Barras = ({ datos, mapa }: { datos: [string, number][]; mapa: Record<string, string> }) => {
-    const max = Math.max(1, ...datos.map((d) => d[1]))
-    return <div className="barras">{datos.map(([k, n]) => (<div className="barra-fila" key={k}><span>{mapa[k] ?? k}</span><div className="pista"><div className="relleno" style={{ width: `${(n / max) * 100}%` }} /></div><b>{n}</b></div>))}</div>
   }
   return (
     <Modal abierto={abierto} titulo="Análisis de conversaciones" onClose={onClose}>

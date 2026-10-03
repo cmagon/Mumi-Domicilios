@@ -30,7 +30,7 @@ export default function Clientes() {
     <>
       <div className="card"><div className="row">
         <input placeholder="Buscar por nombre o teléfono" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={orden} onChange={(e) => setOrden(e.target.value as Orden)}>
+        <select aria-label="Ordenar clientes por" value={orden} onChange={(e) => setOrden(e.target.value as Orden)}>
           <option value="pedidos">Más pedidos</option><option value="total_gastado">Mayor gasto</option><option value="ultimo_pedido">Más recientes</option></select>
         <button className="sec" onClick={exportar}>Exportar CSV</button></div></div>
       {lista.map((c) => (

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { cop } from './hooks'
 import type { Producto } from './types'
-import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from './ui'
+import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion, Info } from './ui'
 
 type Item = { producto_id: string; cantidad: number }
 type Combo = { id: string; nombre: string; descripcion: string; precio: number; imagen_url: string | null; desde: string | null; hasta: string | null; activo: boolean; combo_items: (Item & { productos?: { nombre: string; precio: number } | null })[] }
@@ -58,7 +58,7 @@ export default function Combos({ productos }: { productos: Producto[] }) {
 
   return (
     <>
-      <p className="muted">Crea combos o promociones con varias galletas a un precio especial. Mientras estén <b>vigentes</b>, el bot los ofrece cuando preguntan por ofertas y también en el primer mensaje de la conversación, y puede venderlos.</p>
+      <Info bloque>Crea combos o promociones con varias galletas a un precio especial. Mientras estén <b>vigentes</b>, el bot los ofrece cuando preguntan por ofertas y también en el primer mensaje de la conversación, y puede venderlos.</Info>
       <div className="tarjetas">
         {lista.map((c) => (
           <div className={`tarjeta ${c.activo ? '' : 'off'}`} key={c.id}>

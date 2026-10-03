@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Info as InfoIcon, X as XIcon } from 'lucide-react'
 
 // ---------- Toasts (avisos que se deslizan al guardar/editar) ----------
 type Tipo = 'ok' | 'err' | 'info'
@@ -55,23 +56,41 @@ export function AsyncButton({ onClick, children, okText = 'Listo', className = '
 }
 
 // ---------- Modal ----------
+const pilaModales: object[] = [] // solo el modal de más arriba reacciona a Esc (un Confirmar sobre otro modal no cierra los dos)
+const ENFOCABLES = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 export function Modal({ abierto, titulo, onClose, children, pie, ancho = 480 }: {
   abierto: boolean; titulo: string; onClose: () => void; children: ReactNode; pie?: ReactNode; ancho?: number
 }) {
+  const caja = useRef<HTMLDivElement>(null)
+  const tituloId = useId()
+  const cerrarRef = useRef(onClose); cerrarRef.current = onClose
   useEffect(() => {
     if (!abierto) return
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    window.addEventListener('keydown', esc)
+    const yo = {}; pilaModales.push(yo)
+    const previo = document.activeElement as HTMLElement | null
+    const tecla = (e: KeyboardEvent) => {
+      if (pilaModales[pilaModales.length - 1] !== yo) return
+      if (e.key === 'Escape') { cerrarRef.current(); return }
+      if (e.key === 'Tab' && caja.current) { // el foco se queda dentro del modal
+        const l = [...caja.current.querySelectorAll<HTMLElement>(ENFOCABLES)]
+        if (!l.length) return
+        const a = document.activeElement
+        if (e.shiftKey && (a === l[0] || a === caja.current)) { e.preventDefault(); l[l.length - 1].focus() }
+        else if (!e.shiftKey && a === l[l.length - 1]) { e.preventDefault(); l[0].focus() }
+      }
+    }
+    window.addEventListener('keydown', tecla)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { window.removeEventListener('keydown', esc); document.body.style.overflow = prev }
-  }, [abierto, onClose])
+    if (!caja.current?.contains(document.activeElement)) caja.current?.focus()
+    return () => { window.removeEventListener('keydown', tecla); document.body.style.overflow = prev; pilaModales.splice(pilaModales.indexOf(yo), 1); previo?.focus?.() }
+  }, [abierto])
   if (!abierto) return null
   // Se pinta en <body>: así ningún contenedor con animaciones/transform lo desplaza o recorta
   return createPortal(
     <div className="modal-fondo" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: ancho }}>
-        <div className="modal-cab"><h2>{titulo}</h2><button className="sec sm cerrar" onClick={onClose} aria-label="Cerrar">✕</button></div>
+      <div className="modal" ref={caja} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={tituloId} style={{ maxWidth: ancho }}>
+        <div className="modal-cab"><h2 id={tituloId}>{titulo}</h2><button className="sec sm cerrar" onClick={onClose} aria-label="Cerrar"><XIcon size={18} aria-hidden /></button></div>
         <div className="modal-cuerpo">{children}</div>
         {pie && <div className="modal-pie">{pie}</div>}
       </div>
@@ -95,10 +114,42 @@ export function Confirmar({ c, onClose }: { c: Confirmacion | null; onClose: () 
 // ---------- Interruptor ----------
 export function Switch({ checked, onChange, label, color }: { checked: boolean; onChange: (v: boolean) => void; label?: string; color?: 'verde' }) {
   return (
-    <label className="switch-fila">
-      <span className={`switch ${checked ? 'on' : ''} ${color ?? ''}`} role="switch" aria-checked={checked} tabIndex={0}
-        onClick={() => onChange(!checked)} onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && (e.preventDefault(), onChange(!checked))}><span className="perilla" /></span>
+    <label className="switch-fila" onClick={(e) => { e.preventDefault(); onChange(!checked) }}>
+      <span className={`switch ${checked ? 'on' : ''} ${color ?? ''}`} role="switch" aria-checked={checked} aria-label={label} tabIndex={0}
+        onKeyDown={(e) => (e.key === ' ' || e.key === 'Enter') && (e.preventDefault(), onChange(!checked))}><span className="perilla" /></span>
       {label && <span>{label}</span>}
     </label>
+  )
+}
+
+// ---------- Ayuda en un botón "i": los textos largos de instrucciones van aquí, no a la vista ----------
+// Se abre como una tarjeta flotante (portal) que se acomoda dentro de la pantalla; se cierra con Esc, tocando fuera o al desplazarse.
+export function Info({ children, bloque = false, titulo = 'Ayuda' }: { children: ReactNode; bloque?: boolean; titulo?: string }) {
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; w: number } | null>(null)
+  const btn = useRef<HTMLButtonElement>(null)
+  const id = useId()
+  const cerrar = useCallback(() => setPos(null), [])
+  useEffect(() => {
+    if (!pos) return
+    const fuera = (e: Event) => { if (!(e.target as HTMLElement).closest?.(`[data-info="${CSS.escape(id)}"]`) && !btn.current?.contains(e.target as Node)) cerrar() }
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); cerrar(); btn.current?.focus() } } // Esc cierra solo la ayuda, no el modal que la contiene
+    document.addEventListener('pointerdown', fuera); document.addEventListener('keydown', tecla)
+    window.addEventListener('resize', cerrar); window.addEventListener('scroll', cerrar, true)
+    return () => { document.removeEventListener('pointerdown', fuera); document.removeEventListener('keydown', tecla); window.removeEventListener('resize', cerrar); window.removeEventListener('scroll', cerrar, true) }
+  }, [pos, id, cerrar])
+  const abrir = () => {
+    if (pos) return cerrar()
+    const r = btn.current!.getBoundingClientRect(), w = Math.min(340, window.innerWidth - 24)
+    const left = Math.max(12, Math.min(r.left, window.innerWidth - w - 12))
+    setPos(r.bottom > window.innerHeight * 0.6 ? { bottom: window.innerHeight - r.top + 6, left, w } : { top: r.bottom + 6, left, w })
+  }
+  return (
+    <>
+      <button ref={btn} type="button" className={`info-btn ${bloque ? 'bloque' : ''}`} aria-label={titulo} aria-expanded={!!pos} aria-controls={id} onClick={abrir}>
+        <InfoIcon size={bloque ? 16 : 18} aria-hidden />{bloque && <span>{titulo}</span>}
+      </button>
+      {pos && createPortal(
+        <div id={id} data-info={id} role="dialog" aria-modal="false" aria-label={titulo} className="info-pop" style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: pos.w }}>{children}</div>, document.body)}
+    </>
   )
 }

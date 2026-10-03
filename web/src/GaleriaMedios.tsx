@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import { useToast } from './ui'
+import { useToast, Info } from './ui'
 
 type Medio = { id: string; url: string; tipo: 'image' | 'video'; principal: boolean; orden: number }
 
@@ -65,7 +65,7 @@ export default function GaleriaMedios({ productoId, onPrincipal }: { productoId:
         <button type="button" className="medio nuevo" disabled={subiendo} onClick={() => input.current?.click()}>{subiendo ? 'Subiendo…' : '＋ Agregar'}</button>
       </div>
       <input ref={input} type="file" accept="image/*,video/mp4" multiple hidden onChange={(e) => subir(e.target.files)} />
-      <p className="muted">⭐ La foto <b>principal</b> es la que se envía al ofrecer fotos. Las demás fotos y los videos (MP4, máx. 16 MB) se envían solo si el cliente pide más.</p>
+      <Info bloque>⭐ La foto <b>principal</b> es la que se envía al ofrecer fotos. Las demás fotos y los videos (MP4, máx. 16 MB) se envían solo si el cliente pide más.</Info>
     </div>
   )
 }

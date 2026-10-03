@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
 import { numerosEquipo } from '../equipo'
-import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion } from '../ui'
+import { AsyncButton, Confirmar, Modal, useToast, type Confirmacion, Info } from '../ui'
 
 type Campana = { id: string; nombre: string; texto: string; imagen_url: string | null; boton1: string | null; boton2: string | null; estado: 'borrador' | 'enviada'; creado_en: string; enviada_en: string | null }
 type Envio = { campana_id: string; telefono: string; estado: string; boton_tocado: number | null }
@@ -67,7 +67,7 @@ export default function Campanas() {
         <h2 style={{ margin: 0, flex: '1 1 auto' }}>Campañas</h2>
         <button onClick={() => abrir()}>+ Nueva campaña</button>
       </div>
-      <p className="muted">Crea un mensaje con imagen, texto y hasta 2 botones y envíalo a los clientes que escribieron en las últimas 24 h (la ventana de WhatsApp). Cuando alguien toca un botón, el bot continúa la conversación.</p>
+      <Info bloque>Crea un mensaje con imagen, texto y hasta 2 botones y envíalo a los clientes que escribieron en las últimas 24 h (la ventana de WhatsApp). Cuando alguien toca un botón, el bot continúa la conversación.</Info>
       <div className="tarjetas">
         {lista.map((c) => { const n = cuenta(c.id); return (
           <div className="tarjeta" key={c.id}>
@@ -152,7 +152,7 @@ function EnviarCampana({ c, equipo, yaEnviados, onClose }: { c: Campana; equipo:
   return (
     <Modal abierto titulo={`Enviar "${c.nombre}"`} onClose={onClose} ancho={520}
       pie={<><span className="muted" style={{ marginRight: 'auto' }}>{sel.size} seleccionado{sel.size === 1 ? '' : 's'}</span><button className="sec" onClick={onClose}>Cancelar</button><AsyncButton okText="Enviada" disabled={!sel.size} onClick={enviar}>Enviar a {sel.size}</AsyncButton></>}>
-      <p className="muted">Solo aparecen clientes con la ventana de 24 h abierta (escribieron hace menos de 24 h). El equipo nunca recibe campañas.</p>
+      <Info bloque>Solo aparecen clientes con la ventana de 24 h abierta (escribieron hace menos de 24 h). El equipo nunca recibe campañas.</Info>
       {dest === null ? <p className="muted">Cargando…</p> : !dest.length ? <p className="muted">No hay clientes con la ventana abierta ahora mismo.</p> : <>
         <div className="row" style={{ marginBottom: 6 }}>
           <input style={{ flex: 1 }} placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />

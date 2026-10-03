@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { LocateFixed, Search } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -52,9 +53,9 @@ export default function MapaPin({ lat, lng, onChange, direccion }: { lat: string
   return (
     <div>
       <div className="row">
-        <input style={{ flex: 1, minWidth: 0 }} placeholder="Buscar dirección o barrio" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscar()} />
-        <button type="button" className="sec" onClick={buscar}>🔎</button>
-        <button type="button" className="sec" onClick={aqui} title="Mi ubicación">🎯</button>
+        <input style={{ flex: 1, minWidth: 0 }} aria-label="Buscar dirección o barrio" placeholder="Buscar dirección o barrio" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && buscar()} />
+        <button type="button" className="sec" onClick={buscar} aria-label="Buscar dirección" title="Buscar"><Search size={18} aria-hidden /></button>
+        <button type="button" className="sec" onClick={aqui} title="Mi ubicación" aria-label="Usar mi ubicación"><LocateFixed size={18} aria-hidden /></button>
       </div>
       <div ref={caja} className="mapa-pin" />
       <p className="muted">{msg || 'Toca el mapa o arrastra el pin hasta la puerta del local.'}{lat && lng ? ` · ${lat}, ${lng}` : ''}</p>

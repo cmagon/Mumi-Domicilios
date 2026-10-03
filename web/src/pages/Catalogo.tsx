@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { Cookie, Gift, Image, Layers } from 'lucide-react'
 import { supabase } from '../supabase'
 import { cop } from '../hooks'
 import type { Categoria, Producto } from '../types'
 import GaleriaMedios from '../GaleriaMedios'
 import Combos from '../Combos'
 import ImagenesBot from '../ImagenesBot'
-import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
+import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion, Info } from '../ui'
 
 const VACIO = { id: '', nombre: '', descripcion: '', detalles: '', precio: '', foto_url: '' as string | null, activo: true, categoria_id: '' }
 
@@ -93,13 +94,13 @@ export default function Catalogo() {
     <>
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
         <h2 style={{ margin: 0, flex: '1 1 auto' }}>Catálogo</h2>
-        {vista === 'sabores' && <><button className="sec" onClick={() => setVerCats(true)}>🗂 Categorías</button>
+        {vista === 'sabores' && <><button className="sec" onClick={() => setVerCats(true)}><Layers size={16} aria-hidden /> Categorías</button>
         <button onClick={() => abrir()}>+ Nuevo sabor</button></>}
       </div>
       <div className="chips" style={{ marginBottom: 12 }}>
-        <button className={`chip ${vista === 'sabores' ? 'on' : ''}`} onClick={() => setVista('sabores')}>🧁 Sabores y productos</button>
-        <button className={`chip ${vista === 'combos' ? 'on' : ''}`} onClick={() => setVista('combos')}>🎁 Combos y promociones</button>
-        <button className={`chip ${vista === 'imagenes' ? 'on' : ''}`} onClick={() => setVista('imagenes')}>🖼 Imágenes del bot</button>
+        <button className={`chip ${vista === 'sabores' ? 'on' : ''}`} onClick={() => setVista('sabores')}><Cookie size={16} aria-hidden /> Sabores y productos</button>
+        <button className={`chip ${vista === 'combos' ? 'on' : ''}`} onClick={() => setVista('combos')}><Gift size={16} aria-hidden /> Combos y promociones</button>
+        <button className={`chip ${vista === 'imagenes' ? 'on' : ''}`} onClick={() => setVista('imagenes')}><Image size={16} aria-hidden /> Imágenes del bot</button>
       </div>
       {vista === 'imagenes' ? <ImagenesBot /> : vista === 'combos' ? <Combos productos={items.filter((p) => p.activo)} /> : <>
       {cats.length > 0 && <div className="chips" style={{ marginBottom: 12 }}>
@@ -138,7 +139,7 @@ export default function Catalogo() {
           <label>Nombre *</label><input className={errores.nombre ? 'invalido' : ''} autoFocus value={ed.nombre} onChange={(e) => setEd({ ...ed, nombre: e.target.value })} />
           {cats.length > 0 && <><label>Categoría</label><select value={ed.categoria_id} onChange={(e) => setEd({ ...ed, categoria_id: e.target.value })}><option value="">Sin categoría</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></>}
           <label>Descripción</label><input value={ed.descripcion} onChange={(e) => setEd({ ...ed, descripcion: e.target.value })} />
-          <label>Detalles específicos (ingredientes, alérgenos, tamaño, conservación…)</label>
+          <div className="lbl-fila"><label>Detalles específicos</label><Info>Ingredientes, alérgenos, tamaño, conservación… El bot solo afirma lo que escribas aquí.</Info></div>
           <textarea style={{ minHeight: 90 }} placeholder="El bot solo afirma lo que escribas aquí; si falta un dato, dirá que lo confirma con el equipo." value={ed.detalles} onChange={(e) => setEd({ ...ed, detalles: e.target.value })} />
           <label>Precio (COP) *</label><input className={errores.precio ? 'invalido' : ''} type="number" min={0} value={ed.precio} onChange={(e) => setEd({ ...ed, precio: e.target.value })} />
           <label>Fotos y videos</label>
@@ -151,9 +152,9 @@ export default function Catalogo() {
           <Switch checked={ed.activo} onChange={(v) => setEd({ ...ed, activo: v })} label="Visible para el bot y los clientes" />
         </>}
       </Modal>
-      <Modal abierto={verCats} titulo="🗂 Categorías del catálogo" onClose={() => setVerCats(false)} ancho={480}
+      <Modal abierto={verCats} titulo="Categorías del catálogo" onClose={() => setVerCats(false)} ancho={480}
         pie={<button className="sec" onClick={() => setVerCats(false)}>Cerrar</button>}>
-        <p className="muted">Crea las categorías que necesites (por ejemplo Galletas, Bebidas, Postres). Cada producto pertenece a una; así, más adelante, el bot podrá sugerir complementos.</p>
+        <Info bloque>Crea las categorías que necesites (por ejemplo Galletas, Bebidas, Postres). Cada producto pertenece a una; así, más adelante, el bot podrá sugerir complementos.</Info>
         {cats.length === 0 && <p className="muted">Aún no hay categorías. Si ves este mensaje y ya creaste alguna, falta correr la migración 0043 en Supabase.</p>}
         {cats.map((c) => (
           <div className="row" key={c.id} style={{ marginBottom: 6 }}>

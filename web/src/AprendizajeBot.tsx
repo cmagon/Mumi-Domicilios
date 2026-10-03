@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import { AsyncButton, Confirmar, Switch, useToast, type Confirmacion } from './ui'
+import { AsyncButton, Confirmar, Switch, useToast, type Confirmacion, Info } from './ui'
 import { useConfig } from './hooks'
 
 type Regla = { id: string; regla: string; evidencia: string | null; origen_telefono: string | null; estado: 'pendiente' | 'activa' | 'descartada' | 'integrada'; creado_en: string; decidido_en?: string | null; vigente_hasta?: string | null; categoria?: string | null }
@@ -101,7 +101,7 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
       return (
         <details className="grupo-reglas" key={k} open={abiertos.has(k)}
           onToggle={(e) => { const o = (e.currentTarget as HTMLDetailsElement).open; setAbiertos((a) => (a.has(k) === o ? a : (() => { const n = new Set(a); o ? n.add(k) : n.delete(k); return n })())) }}>
-          <summary>📅 {new Date(dia + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })} <b>{rs.length}</b></summary>
+          <summary>📅 {new Date(dia + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase())} <b>{rs.length}</b></summary>
           {rs.map((x) => fila(x))}
         </details>)
     })}</>
@@ -128,7 +128,7 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
   return (
     <>
       {parte !== 'respaldos' && <div className="card"><h2>🧠 Aprendizaje del bot</h2>
-        <p className="muted">La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. También aprende de <b>cómo y qué respondes tú</b> cuando atiendes un chat: tu estilo, los datos que das y tus criterios. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</p>
+        <Info bloque>La IA revisa las conversaciones (con venta o sin ella), detecta fricciones del bot y propone reglas. También aprende de <b>cómo y qué respondes tú</b> cuando atiendes un chat: tu estilo, los datos que das y tus criterios. Tú decides cuáles activar; las activas se suman al prompt automáticamente.</Info>
         <Switch color="verde" checked={auto} onChange={async (v) => { await save('aprendizaje_auto', v ? 'si' : 'no'); toast(v ? 'Aprendizaje automático activado: las sugerencias nuevas se activan solas' : 'Aprendizaje automático apagado: las sugerencias nuevas esperan tu aprobación', 'info') }}
           label="Aprendizaje automático: activar solas las sugerencias nuevas (puedes desactivar cualquiera después)" />
         <div className="row"><AsyncButton className="sec" okText="Revisadas" onClick={revisar}>Revisar conversaciones ahora</AsyncButton><AsyncButton className="sec" okText="Revisadas" onClick={aprenderEquipo}>Aprender de mis respuestas</AsyncButton></div>
@@ -143,7 +143,7 @@ export default function AprendizajeBot({ parte, onPromptActualizado }: { parte?:
       </div>}
 
       {parte !== 'reglas' && <div className="card"><h2>💾 Respaldos del bot</h2>
-        <p className="muted">Guardan el prompt, el modelo, el proveedor, la configuración y las reglas aprendidas. Se crean solos antes de cada cambio de prompt o modelo (últimos 60) y puedes crear los tuyos; los manuales no se borran.</p>
+        <Info bloque>Guardan el prompt, el modelo, el proveedor, la configuración y las reglas aprendidas. Se crean solos antes de cada cambio de prompt o modelo (últimos 60) y puedes crear los tuyos; los manuales no se borran.</Info>
         <div className="row"><AsyncButton okText="Respaldo creado" onClick={respaldar}>Crear respaldo ahora</AsyncButton></div>
         {resp.map((b) => (
           <div className="fila-item" key={b.id} style={{ padding: '8px 0', borderTop: '1px solid var(--bd)' }}>

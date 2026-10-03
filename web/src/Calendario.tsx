@@ -63,7 +63,7 @@ export function SelectorFecha({ valor, onChange, etiqueta }: { valor: string; on
   const cal = useCalendario()
   const [abierto, setAbierto] = useState(false)
   const [mes, setMes] = useState(new Date((valor || hoy()) + 'T12:00:00'))
-  const bonita = valor ? new Date(valor + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }) : 'Elegir fecha'
+  const bonita = valor ? new Date(valor + 'T12:00:00').toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, (c) => c.toUpperCase()) : 'Elegir fecha'
   return (
     <>
       <button type="button" className="sec selector-fecha" onClick={() => { setMes(new Date((valor || hoy()) + 'T12:00:00')); setAbierto(true) }}>📅 {etiqueta ?? bonita}</button>

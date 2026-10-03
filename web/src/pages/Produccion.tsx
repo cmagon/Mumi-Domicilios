@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Flame, Snowflake } from 'lucide-react'
 import { CalendarioGestion, SelectorFecha, useCalendario } from '../Calendario'
 import { supabase } from '../supabase'
 import { cop, hoy } from '../hooks'
 import type { Pedido } from '../types'
 import { imprimirTickets } from '../ticket'
-import { AsyncButton, Modal, useToast } from '../ui'
+import { AsyncButton, Modal, useToast, Info } from '../ui'
 import { etiquetaFecha } from '../pedidoFlow'
 
 type Fila = {
@@ -99,7 +100,7 @@ export default function Produccion() {
       {/* 1. Stock general */}
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, flex: '1 1 auto' }}>❄️ Stock general (fabricado / congelado)</h2>
+          <h2 style={{ margin: 0, flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: 8 }}><Snowflake size={20} aria-hidden /> Stock general (fabricado / congelado)</h2>
           <button onClick={abrirFabricacion}>+ Registrar fabricación</button>
         </div>
         <p className="muted">Lo que se fabrica y se congela. El bot agenda pedidos para las próximas entregas con este stock.</p>
@@ -125,7 +126,7 @@ export default function Produccion() {
       {/* 2. Horneado del día */}
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0, flex: '1 1 auto' }}>🔥 Horneado del día</h2>
+          <h2 style={{ margin: 0, flex: '1 1 auto', display: 'flex', alignItems: 'center', gap: 8 }}><Flame size={20} aria-hidden /> Horneado del día</h2>
           <button onClick={abrirHorneado}>{registrado ? 'Editar horneado' : 'Registrar horneado'}</button>
         </div>
         <div className="row" style={{ alignItems: 'end' }}>
@@ -145,7 +146,7 @@ export default function Produccion() {
               {f.faltan_dia > 0 && <span className="badge rojo">Faltan {f.faltan_dia} para cubrir lo reservado</span>}
             </div>))}
         </div>
-        <p className="muted">Extras = horneadas − reservadas. Cada pedido del bot para este día los descuenta al instante; cancelar o eliminar un pedido los devuelve.</p>
+        <Info bloque>Extras = horneadas − reservadas. Cada pedido del bot para este día los descuenta al instante; cancelar o eliminar un pedido los devuelve.</Info>
       </div>
 
       <div className="card"><h2>Pedidos del día ({pedidos.length})</h2>
@@ -156,7 +157,7 @@ export default function Produccion() {
 
       <Modal abierto={modal === 'fabricacion'} titulo="Registrar fabricación" onClose={() => setModal(null)}
         pie={<><button className="sec" onClick={() => setModal(null)}>Cancelar</button><AsyncButton okText="Registrado" onClick={guardarFabricacion}>Guardar</AsyncButton></>}>
-        <p className="muted">¿Cuántas fabricaste (y congelaste) de cada sabor? Se suman al stock general. Usa un número negativo para corregir o descontar mermas.</p>
+        <Info bloque>¿Cuántas fabricaste (y congelaste) de cada sabor? Se suman al stock general. Usa un número negativo para corregir o descontar mermas.</Info>
         {filas.map((f) => (
           <div className="fila-item" key={f.producto_id} style={{ marginBottom: 6 }}>
             <span className="crece">{f.nombre} <span className="muted">(hay {f.disponible_general})</span></span>
@@ -167,7 +168,7 @@ export default function Produccion() {
 
       <Modal abierto={modal === 'horneado'} titulo={`Horneado · ${etiquetaFecha(fecha)}`} onClose={() => setModal(null)}
         pie={<><button className="sec" onClick={() => setModal(null)}>Cancelar</button><AsyncButton okText="Guardado" onClick={guardarHorneado}>Guardar horneado</AsyncButton></>}>
-        <p className="muted">Escribe el <b>total</b> que hornearás de cada sabor, incluyendo lo ya reservado. La diferencia son los extras que el bot ofrece en el horario de entregas.</p>
+        <Info bloque>Escribe el <b>total</b> que hornearás de cada sabor, incluyendo lo ya reservado. La diferencia son los extras que el bot ofrece en el horario de entregas.</Info>
         {filas.map((f) => {
           const tot = parseInt(vals[f.producto_id] || '0', 10) || 0
           const extras = tot - f.reservadas_dia

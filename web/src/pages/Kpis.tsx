@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Info } from '../ui'
 import { supabase } from '../supabase'
 
 type Sabor = { nombre: string; vendidas: number; sobrante: number; agotado: number }
@@ -44,7 +45,7 @@ export default function Kpis() {
       <div className="card" style={{ gridColumn: '1/-1' }}><h2>Por sabor</h2>
         <table><thead><tr><th>Sabor</th><th>Vendidas</th><th>Sobrante horneado</th><th>Pedidas sin stock</th></tr></thead>
           <tbody>{sabores.map((s) => <tr key={s.nombre}><td>{s.nombre}</td><td>{s.vendidas}</td><td>{s.sobrante}</td><td>{s.agotado}</td></tr>)}</tbody></table>
-        <p className="muted">"Pedidas sin stock" suma las unidades que los clientes pidieron cuando el sabor no alcanzaba (las registra el bot).</p></div>
+        <Info bloque>"Pedidas sin stock" suma las unidades que los clientes pidieron cuando el sabor no alcanzaba (las registra el bot).</Info></div>
     </div>
   )
 }

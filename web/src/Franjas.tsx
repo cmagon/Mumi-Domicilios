@@ -33,7 +33,7 @@ export function FranjaSelect({ valor, onChange }: { valor: string; onChange: (v:
   const l = listaFranjas(cfg.franjas_entrega ?? '')
   const extra = valor && !l.includes(valor) ? [valor] : []
   return (
-    <select value={valor} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label="Franja horaria" value={valor} onChange={(e) => onChange(e.target.value)}>
       <option value="">— sin franja —</option>
       {[...l, ...extra].map((x) => <option key={x} value={x}>{franjaBonita(x)}</option>)}
     </select>

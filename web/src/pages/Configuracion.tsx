@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ArchiveRestore, Bot, Brain, CalendarDays, CreditCard, MapPin, Megaphone, MessagesSquare, Palette, Users } from 'lucide-react'
 import { supabase } from '../supabase'
 import { useConfig } from '../hooks'
 import AprendizajeBot from '../AprendizajeBot'
@@ -7,7 +8,7 @@ import { FranjasEditor } from '../Franjas'
 import MapaPin from '../MapaPin'
 import { sonidoActivo, setSonidoActivo, tono } from '../sonido'
 import { activarPush, desactivarPush, suscripcionActual, pushSoportado, instaladaIOS } from '../notificaciones'
-import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion } from '../ui'
+import { AsyncButton, Confirmar, Modal, Switch, useToast, type Confirmacion, Info } from '../ui'
 
 type M = { id: string; nombre: string; numero_cuenta: string; tipo_cuenta: string; activo: boolean }
 type H = { id: string; valor_anterior: string; cambiado_en: string }
@@ -111,19 +112,19 @@ export default function Configuracion() {
     <>
       <h2 style={{ margin: '4px 0 10px' }}>Configuración</h2>
       <div className="tiles">
-        <button className="tile" onClick={() => setSec('bot')}><span className="tile-ico">🤖</span><b>Bot e IA</b><span className="muted">Proveedor, claves, prompt y versiones</span></button>
-        <button className="tile" onClick={() => setSec('avisos')}><span className="tile-ico">📣</span><b>Avisos temporales</b><span className="muted">Eventos e instrucciones con fecha</span></button>
-        <button className="tile" onClick={() => setSec('pagos')}><span className="tile-ico">💳</span><b>Métodos de pago</b><span className="muted">Cuentas y efectivo</span></button>
-        <button className="tile" onClick={() => setSec('comp')}><span className="tile-ico">💬</span><b>Comportamiento y seguimiento</b><span className="muted">Escritura natural, recordatorios, pedidos grandes</span></button>
-        <button className="tile" onClick={() => setSec('oper')}><span className="tile-ico">🗓</span><b>Operación</b><span className="muted">Días de producción, franjas, reservas</span></button>
-        <button className="tile" onClick={() => setSec('local')}><span className="tile-ico">📍</span><b>Local y zonas</b><span className="muted">Dirección, pin y barrios sin domicilio</span></button>
-        <button className="tile" onClick={() => setSec('equipo')}><span className="tile-ico">👥</span><b>Equipo y números</b><span className="muted">Admins, domiciliario, atención humana</span></button>
-        <button className="tile" onClick={() => setSec('marca')}><span className="tile-ico">🎨</span><b>Marca y notificaciones</b><span className="muted">Logo, ícono de la app y sonido</span></button>
-        <button className="tile" onClick={() => setSec('aprende')}><span className="tile-ico">🧠</span><b>Aprendizaje del bot</b><span className="muted">Reglas propuestas por la IA</span></button>
-        <button className="tile" onClick={() => setSec('respaldos')}><span className="tile-ico">💾</span><b>Respaldos</b><span className="muted">Copias del prompt, modelo y reglas</span></button>
+        <button className="tile" onClick={() => setSec('bot')}><span className="tile-ico"><Bot size={24} aria-hidden /></span><b>Bot e IA</b><span className="muted">Proveedor, claves, prompt y versiones</span></button>
+        <button className="tile" onClick={() => setSec('avisos')}><span className="tile-ico"><Megaphone size={24} aria-hidden /></span><b>Avisos temporales</b><span className="muted">Eventos e instrucciones con fecha</span></button>
+        <button className="tile" onClick={() => setSec('pagos')}><span className="tile-ico"><CreditCard size={24} aria-hidden /></span><b>Métodos de pago</b><span className="muted">Cuentas y efectivo</span></button>
+        <button className="tile" onClick={() => setSec('comp')}><span className="tile-ico"><MessagesSquare size={24} aria-hidden /></span><b>Comportamiento y seguimiento</b><span className="muted">Escritura natural, recordatorios, pedidos grandes</span></button>
+        <button className="tile" onClick={() => setSec('oper')}><span className="tile-ico"><CalendarDays size={24} aria-hidden /></span><b>Operación</b><span className="muted">Días de producción, franjas, reservas</span></button>
+        <button className="tile" onClick={() => setSec('local')}><span className="tile-ico"><MapPin size={24} aria-hidden /></span><b>Local y zonas</b><span className="muted">Dirección, pin y barrios sin domicilio</span></button>
+        <button className="tile" onClick={() => setSec('equipo')}><span className="tile-ico"><Users size={24} aria-hidden /></span><b>Equipo y números</b><span className="muted">Admins, domiciliario, atención humana</span></button>
+        <button className="tile" onClick={() => setSec('marca')}><span className="tile-ico"><Palette size={24} aria-hidden /></span><b>Marca y notificaciones</b><span className="muted">Logo, ícono de la app y sonido</span></button>
+        <button className="tile" onClick={() => setSec('aprende')}><span className="tile-ico"><Brain size={24} aria-hidden /></span><b>Aprendizaje del bot</b><span className="muted">Reglas propuestas por la IA</span></button>
+        <button className="tile" onClick={() => setSec('respaldos')}><span className="tile-ico"><ArchiveRestore size={24} aria-hidden /></span><b>Respaldos</b><span className="muted">Copias del prompt, modelo y reglas</span></button>
       </div>
 
-      <Modal abierto={sec === 'bot'} titulo="🤖 Bot e IA" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'bot'} titulo="Bot e IA" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'bot' && (<>
 <div>
@@ -153,17 +154,17 @@ export default function Configuracion() {
 
         </>)}
       </Modal>
-      <Modal abierto={sec === 'avisos'} titulo="📣 Avisos temporales" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'avisos'} titulo="Avisos temporales" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'avisos' && (<>
 <AvisosBot />
         </>)}
       </Modal>
-      <Modal abierto={sec === 'pagos'} titulo="💳 Métodos de pago" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'pagos'} titulo="Métodos de pago" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'pagos' && (<>
 <div>
-        <p className="muted">Solo estos medios (y el efectivo, si está habilitado) los ofrece el bot. Nombre y número son obligatorios; el tipo de cuenta es opcional.</p>
+        <Info bloque>Solo estos medios (y el efectivo, si está habilitado) los ofrece el bot. Nombre y número son obligatorios; el tipo de cuenta es opcional.</Info>
         <Switch checked={efectivo} onChange={alternarEfectivo} label="Aceptar efectivo contraentrega" />
         {metodos.map((m) => (
           <div className="fila-item" key={m.id} style={{ padding: '8px 0', borderTop: '1px solid var(--bd)', opacity: m.activo ? 1 : 0.55 }}>
@@ -178,18 +179,18 @@ export default function Configuracion() {
 
         </>)}
       </Modal>
-      <Modal abierto={sec === 'comp'} titulo="💬 Comportamiento y seguimiento" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'comp'} titulo="Comportamiento y seguimiento" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'comp' && (<>
 <div>
-        <label>Número de atención personalizada (el bot lo da cuando no puede ayudar; ej. 573001234567)</label>
+        <div className="lbl-fila"><label>Número de atención personalizada</label><Info>El bot lo da cuando no puede ayudar. Con indicativo, ej. 573001234567.</Info></div>
         <input value={f.numero_atencion ?? ''} onChange={(e) => set('numero_atencion', e.target.value)} />
-        <label>Pedidos grandes: desde cuántas galletas en un pedido el bot consulta con el admin (por defecto 30)</label>
+        <div className="lbl-fila"><label>Pedidos grandes (galletas)</label><Info>Desde cuántas galletas en un pedido el bot consulta con el admin en lugar de crearlo. Por defecto 30.</Info></div>
         <input type="number" min={1} value={f.umbral_pedido_grande ?? '30'} onChange={(e) => set('umbral_pedido_grande', e.target.value)} />
         <Switch checked={(f.simular_escritura ?? 'si') !== 'no'} onChange={(v) => set('simular_escritura', v ? 'si' : 'no')} label='Simular "escribiendo…" y pausas entre mensajes' />
-        <label>Velocidad de escritura (milisegundos por carácter; más alto = más lento)</label>
+        <div className="lbl-fila"><label>Velocidad de escritura (ms por letra)</label><Info>Milisegundos por carácter: más alto = más lento.</Info></div>
         <input type="number" min={5} value={f.velocidad_escritura_ms ?? '35'} onChange={(e) => set('velocidad_escritura_ms', e.target.value)} />
-        <label>Segundos de espera antes de responder, por si el cliente sigue escribiendo (0 = responder ya)</label>
+        <div className="lbl-fila"><label>Espera antes de responder (segundos)</label><Info>Por si el cliente sigue escribiendo. 0 = responder ya.</Info></div>
         <input type="number" min={0} value={f.espera_agrupar_seg ?? '4'} onChange={(e) => set('espera_agrupar_seg', e.target.value)} />
         <Switch checked={(f.seguimiento_activo ?? 'si') !== 'no'} onChange={(v) => set('seguimiento_activo', v ? 'si' : 'no')} label="Recordatorios automáticos si el cliente no responde" />
         <div className="row">
@@ -199,14 +200,14 @@ export default function Configuracion() {
           <div><label>Enviar desde (hora)</label><input type="number" min={0} max={23} value={f.horario_inicio ?? '7'} onChange={(e) => set('horario_inicio', e.target.value)} /></div>
           <div><label>Hasta (hora)</label><input type="number" min={1} max={24} value={f.horario_fin ?? '21'} onChange={(e) => set('horario_fin', e.target.value)} /></div></div>
         <label>Días que se conservan los chats (por defecto 90; 0 = nunca borrar)</label><input type="number" min={0} value={f.retencion_chat_dias ?? '90'} onChange={(e) => set('retencion_chat_dias', e.target.value)} />
-        <p className="muted">Pasado ese tiempo, de madrugada se borran los mensajes viejos de cada chat y solo se guarda un resumen del cliente (por si vuelve). Los pedidos y sus comprobantes no se tocan. Las estadísticas de conversaciones solo cuentan los chats conservados.</p>
-        <p className="muted">WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</p>
+        <Info bloque>Pasado ese tiempo, de madrugada se borran los mensajes viejos de cada chat y solo se guarda un resumen del cliente (por si vuelve). Los pedidos y sus comprobantes no se tocan. Las estadísticas de conversaciones solo cuentan los chats conservados.</Info>
+        <Info bloque>WhatsApp solo permite mensajes libres dentro de las 24 h posteriores al último mensaje del cliente; pasado ese plazo no se envían recordatorios.</Info>
       </div>
 
 
         </>)}
       </Modal>
-      <Modal abierto={sec === 'oper'} titulo="🗓 Operación" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'oper'} titulo="Operación" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'oper' && (<>
 <div>
@@ -220,7 +221,7 @@ export default function Configuracion() {
       </div>
         </>)}
       </Modal>
-      <Modal abierto={sec === 'local'} titulo="📍 Local y zonas" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'local'} titulo="Local y zonas" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'local' && (<>
 <div>
@@ -228,14 +229,14 @@ export default function Configuracion() {
         <label>Dirección del local (la que el bot da al cliente)</label><input value={f.local_direccion ?? ''} onChange={(e) => set('local_direccion', e.target.value)} />
         <label>Ubicación en el mapa (pin)</label>
         <MapaPin lat={f.local_lat ?? ''} lng={f.local_lng ?? ''} direccion={f.local_direccion} onChange={(la, ln) => { set('local_lat', la); set('local_lng', ln) }} />
-        <p className="muted">Con el pin colocado, el bot envía un pin de WhatsApp al cliente; si no hay pin, envía un enlace al mapa con la dirección. No olvides guardar.</p>
+        <Info bloque>Con el pin colocado, el bot envía un pin de WhatsApp al cliente; si no hay pin, envía un enlace al mapa con la dirección. No olvides guardar.</Info>
         <label>Barrios o zonas donde NO hacemos domicilio (separados por coma)</label>
         <textarea style={{ minHeight: 70 }} placeholder="ej. La Esperanza, El Resbalón, vereda Tierra Grande" value={f.barrios_sin_domicilio ?? ''} onChange={(e) => set('barrios_sin_domicilio', e.target.value)} />
-        <p className="muted">Si la dirección del cliente contiene alguno de estos nombres, el bot le dice que ahí no hay domicilio y le ofrece recoger.</p>
+        <Info bloque>Si la dirección del cliente contiene alguno de estos nombres, el bot le dice que ahí no hay domicilio y le ofrece recoger.</Info>
       </div>
         </>)}
       </Modal>
-      <Modal abierto={sec === 'equipo'} titulo="👥 Equipo y números" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'equipo'} titulo="Equipo y números" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'equipo' && (<>
 <div>
@@ -244,24 +245,24 @@ export default function Configuracion() {
           const [prin = '', sec = '', ...otros] = (f.admin_numeros ?? '').split(',').map((x) => x.trim())
           const guardarNums = (p: string, s2: string, o: string) => set('admin_numeros', [p, s2, ...o.split(',')].map((x) => x.trim()).filter(Boolean).join(','))
           return <>
-            <label>⭐ Número principal del admin (WhatsApp, con indicativo, ej. 573001234567)</label><input value={prin} onChange={(e) => guardarNums(e.target.value, sec, otros.join(','))} />
+            <div className="lbl-fila"><label>⭐ Número principal del admin</label><Info>WhatsApp con indicativo, ej. 573001234567.</Info></div><input value={prin} onChange={(e) => guardarNums(e.target.value, sec, otros.join(','))} />
             <label>🥈 Número secundario (respaldo)</label><input value={sec} onChange={(e) => guardarNums(prin, e.target.value, otros.join(','))} placeholder="Opcional" />
             <label>Otros socios (separados por coma)</label><input value={otros.join(',')} onChange={(e) => guardarNums(prin, sec, e.target.value)} placeholder="Opcional" />
-            <p className="muted">Los avisos, alertas y atenciones humanas se notifican <b>en orden</b>: primero al principal; si no se le puede escribir (pasaron más de 24 h desde que te escribió al bot o WhatsApp falla), se intenta con el secundario. Los resúmenes de las 6 p. m. y los avisos para mantener la ventana abierta van a cada número. Todos estos números <b>nunca</b> se tratan como clientes.</p>
+            <Info bloque>Los avisos, alertas y atenciones humanas se notifican <b>en orden</b>: primero al principal; si no se le puede escribir (pasaron más de 24 h desde que te escribió al bot o WhatsApp falla), se intenta con el secundario. Los resúmenes de las 6 p. m. y los avisos para mantener la ventana abierta van a cada número. Todos estos números <b>nunca</b> se tratan como clientes.</Info>
           </>
         })()}
-        <p className="muted">Estos números <b>nunca</b> se tratan como cliente. Puedes dictarle (texto o nota de voz) <b>"pedido para Juan, 3 de maracuyá, mañana, domicilio…"</b> y te pregunta lo que falte y pide confirmación. También puedes escribirle: <b>evento: …</b>, <b>instrucción: …</b>, <b>avisos</b>, <b>hoy: cacao 30</b>, <b>fabricadas: …</b>. Y enviarle una foto o video con el pie <b>foto: Cacao</b> (agrega al sabor) o <b>nuevo: Nombre, precio, descripción</b> (crea un sabor oculto).</p>
-        <label>Si tardas más de estos minutos en responder a un cliente que atiendes tú, el bot retoma el chat (0 = nunca; por defecto 5)</label><input type="number" min={0} value={f.minutos_humano_sin_responder ?? '5'} onChange={(e) => set('minutos_humano_sin_responder', e.target.value)} />
-        <label>Horas de atención humana antes de que el bot se reactive solo (por defecto 12)</label><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
+        <Info bloque>Estos números <b>nunca</b> se tratan como cliente. Puedes dictarle (texto o nota de voz) <b>"pedido para Juan, 3 de maracuyá, mañana, domicilio…"</b> y te pregunta lo que falte y pide confirmación. También puedes escribirle: <b>evento: …</b>, <b>instrucción: …</b>, <b>avisos</b>, <b>hoy: cacao 30</b>, <b>fabricadas: …</b>. Y enviarle una foto o video con el pie <b>foto: Cacao</b> (agrega al sabor) o <b>nuevo: Nombre, precio, descripción</b> (crea un sabor oculto).</Info>
+        <div className="lbl-fila"><label>Minutos para que el bot retome un chat</label><Info>Si tardas más de estos minutos en responder a un cliente que atiendes tú, el bot retoma el chat. 0 = nunca; por defecto 5.</Info></div><input type="number" min={0} value={f.minutos_humano_sin_responder ?? '5'} onChange={(e) => set('minutos_humano_sin_responder', e.target.value)} />
+        <div className="lbl-fila"><label>Horas de atención humana</label><Info>Pasadas estas horas el bot se reactiva solo. Por defecto 12.</Info></div><input type="number" min={1} value={f.horas_humano ?? '12'} onChange={(e) => set('horas_humano', e.target.value)} />
         <label>Prompt del asistente del administrador (canal oficial por WhatsApp)</label>
         <textarea value={f.prompt_admin ?? ''} onChange={(e) => set('prompt_admin', e.target.value)} placeholder="Vacío = usa el prompt estándar del asistente" />
-        <p className="muted">Es independiente del prompt de ventas. Define cómo te responde y qué hace cuando le das órdenes (registrar lo horneado, cerrar días, cancelar pedidos, avisos, aprendizajes…). Las acciones delicadas siempre piden tu "sí".</p>
-        <label>Modelo de IA solo para el asistente del admin (opcional, del mismo proveedor; uno más rápido responde casi al instante; vacío = el mismo del bot)</label><input value={f.modelo_admin ?? ''} onChange={(e) => set('modelo_admin', e.target.value)} placeholder="ej. claude-haiku-4-5-20251001" />
+        <Info bloque>Es independiente del prompt de ventas. Define cómo te responde y qué hace cuando le das órdenes (registrar lo horneado, cerrar días, cancelar pedidos, avisos, aprendizajes…). Las acciones delicadas siempre piden tu "sí".</Info>
+        <div className="lbl-fila"><label>Modelo de IA del asistente del admin (opcional)</label><Info>Del mismo proveedor que el bot. Uno más rápido responde casi al instante; vacío = el mismo del bot.</Info></div><input value={f.modelo_admin ?? ''} onChange={(e) => set('modelo_admin', e.target.value)} placeholder="ej. claude-haiku-4-5-20251001" />
         <label>Número del domiciliario (WhatsApp, con indicativo, ej. 573001234567)</label><input value={f.domiciliario_numero ?? ''} onChange={(e) => set('domiciliario_numero', e.target.value)} />
       </div>
         </>)}
       </Modal>
-      <Modal abierto={sec === 'marca'} titulo="🎨 Marca y notificaciones" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'marca'} titulo="Marca y notificaciones" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'marca' && (<>
 <div>
@@ -270,22 +271,22 @@ export default function Configuracion() {
         <label>Favicon / ícono de la app</label>{(f.favicon_url || f.logo_url) && <img className="thumb" style={{ width: 64, height: 64, objectFit: 'contain' }} src={f.favicon_url || f.logo_url} alt="favicon" />}
         <input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onChange={(e) => e.target.files?.[0] && favicon(e.target.files[0])} />
         {f.favicon_url && <button type="button" className="sec sm" onClick={() => set('favicon_url', '')}>Quitar (usar el logo)</button>}
-        <p className="muted">El logo va solo en el encabezado. El favicon es el ícono de la pestaña y de la app instalada; si no subes uno, se usa el logo. Mejor un PNG cuadrado de al menos 512 × 512 px, con fondo.</p>
+        <Info bloque>El logo va solo en el encabezado. El favicon es el ícono de la pestaña y de la app instalada; si no subes uno, se usa el logo. Mejor un PNG cuadrado de al menos 512 × 512 px, con fondo.</Info>
         <Switch checked={sonidoOn} onChange={cambiarSonido} label="Sonido de notificaciones en este dispositivo (nuevo mensaje de cliente o aviso)" />
         <button type="button" className="sec" onClick={() => tono()}>🔔 Probar sonido</button>
-        <p className="muted">En el celular, el sonido solo funciona con la app abierta y después de tocar la pantalla; si no oyes nada, sube el volumen de <b>multimedia</b> y quita el modo silencio (en iPhone, el interruptor lateral).</p>
+        <Info bloque>En el celular, el sonido solo funciona con la app abierta y después de tocar la pantalla; si no oyes nada, sube el volumen de <b>multimedia</b> y quita el modo silencio (en iPhone, el interruptor lateral).</Info>
         <Switch checked={pushOn} onChange={cambiarPush} label="Notificaciones en la barra de tareas / pantalla (funcionan con la app cerrada o en segundo plano)" />
         {!pushSoportado() && <p className="muted">{instaladaIOS() ? 'En iPhone/iPad: abre el sitio en Safari → Compartir → "Añadir a pantalla de inicio", ábrela desde el ícono y activa esto de nuevo.' : 'Este navegador no admite notificaciones push.'}</p>}
       </div>
         </>)}
       </Modal>
-      <Modal abierto={sec === 'aprende'} titulo="🧠 Aprendizaje del bot" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'aprende'} titulo="Aprendizaje del bot" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'aprende' && (<>
 <AprendizajeBot parte="reglas" onPromptActualizado={reload} />
         </>)}
       </Modal>
-      <Modal abierto={sec === 'respaldos'} titulo="💾 Respaldos" onClose={() => setSec(null)} ancho={560}
+      <Modal abierto={sec === 'respaldos'} titulo="Respaldos" onClose={() => setSec(null)} ancho={560}
         pie={<><span className="muted" style={{ marginRight: 'auto' }}>{cambios.length ? `${cambios.length} cambio${cambios.length === 1 ? '' : 's'} sin guardar` : 'Todo guardado'}</span><button className="sec" onClick={() => setSec(null)}>Cerrar</button><AsyncButton okText="Guardado" disabled={!cambios.length} onClick={guardarTodo}>Guardar</AsyncButton></>}>
         {sec === 'respaldos' && (<>
 <AprendizajeBot parte="respaldos" />
