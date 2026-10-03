@@ -17,7 +17,7 @@ import Campanas from './pages/Campanas'
 import AlertaIA from './AlertaIA'
 import { ToastProvider } from './ui'
 import { tono, desbloquearAudio } from './sonido'
-import { suscripcionActual } from './notificaciones'
+import { avisoLocal, suscripcionActual } from './notificaciones'
 import { numerosEquipo } from './equipo'
 
 const IDLE_MS = 12 * 60 * 60 * 1000 // cierre de sesión tras 12h de inactividad
@@ -55,13 +55,13 @@ export default function App() {
     const ch = supabase.channel('avisos-badge')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones' }, (p) => {
         contar(); tono(false)
-        if (!conPush && 'Notification' in window && Notification.permission === 'granted') new Notification(String(p.new.titulo), { body: String(p.new.detalle ?? '') })
+        if (!conPush) void avisoLocal(String(p.new.titulo), String(p.new.detalle ?? ''))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones' }, () => contar())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversaciones' }, () => contar())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes' }, (p) => {
         contar(); if (p.new.rol === 'user' && p.new.contenido !== '…') tono(false)
-        if (!conPush && p.new.rol === 'user' && document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('Mensaje de cliente', { body: String(p.new.contenido ?? '').slice(0, 120) })
+        if (!conPush && p.new.rol === 'user' && document.hidden) void avisoLocal('Mensaje de cliente', String(p.new.contenido ?? '').slice(0, 120))
       })
       .subscribe()
     return () => { window.clearInterval(sondeo); navigator.serviceWorker?.removeEventListener('message', onSw); document.removeEventListener('visibilitychange', alVolver); supabase.removeChannel(ch) }

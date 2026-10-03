@@ -1,3 +1,4 @@
+import { avisoLocal } from './notificaciones'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
@@ -18,8 +19,7 @@ export default function AlertaIA() {
     const { data } = await supabase.from('alertas_ia').select('id,tipo,detalle,creado_en').eq('resuelta', false)
       .gte('creado_en', desde).order('creado_en', { ascending: false }).limit(50)
     setAlertas((prev) => {
-      if ((data?.length ?? 0) > prev.length && 'Notification' in window && Notification.permission === 'granted' && data?.[0])
-        new Notification('Bot Mumi: error de IA', { body: TITULO[data[0].tipo] ?? data[0].detalle })
+      if ((data?.length ?? 0) > prev.length && data?.[0]) void avisoLocal('Bot Mumi: error de IA', TITULO[data[0].tipo] ?? data[0].detalle)
       return data ?? []
     })
   }, [])

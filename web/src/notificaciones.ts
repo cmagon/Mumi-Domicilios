@@ -31,3 +31,13 @@ export async function desactivarPush() {
   await supabase.from('push_suscripciones').delete().eq('endpoint', s.endpoint)
   await s.unsubscribe()
 }
+
+// Notificación del sistema desde la página. En Android (Chrome) `new Notification()` lanza error: se usa el service worker; nunca debe romper la app.
+export async function avisoLocal(titulo: string, cuerpo: string) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined
+    if (reg) { await reg.showNotification(titulo, { body: cuerpo, icon: '/favicon.svg', tag: 'mumi' }); return }
+    new Notification(titulo, { body: cuerpo })
+  } catch { /* sin notificaciones del sistema */ }
+}
