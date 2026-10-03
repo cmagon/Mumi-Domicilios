@@ -25,9 +25,9 @@ globalThis.fetch = async (url, init) => {
 }
 await import(out)
 
-async function enviar(texto, id) {
+async function enviar(texto, id, de = '573111') {
   enviados.length = 0
-  const body = JSON.stringify({ entry: [{ changes: [{ value: { contacts: [{ wa_id: '573111', profile: { name: 'Ana' } }], messages: [{ id, from: '573111', type: 'text', text: { body: texto } }] } }] }] })
+  const body = JSON.stringify({ entry: [{ changes: [{ value: { contacts: [{ wa_id: de, profile: { name: 'Ana' } }], messages: [{ id, from: de, type: 'text', text: { body: texto } }] } }] }] })
   const sig = 'sha256=' + createHmac('sha256', 'sec').update(body).digest('hex')
   const r = await handler(new Request('http://x/', { method: 'POST', headers: { 'x-hub-signature-256': sig }, body }))
   await Promise.all(tareas.splice(0))
@@ -52,4 +52,12 @@ modeloVacio = false
 DATA.mensajes[0] = { rol: 'user', contenido: 'otro mensaje', wa_id: 'w9', creado_en: new Date().toISOString() }
 r = await enviar('hola', 'w2')
 assert.deepEqual(r.textos, [], `debió descartar la respuesta por mensaje nuevo: ${JSON.stringify(r.textos)}`)
+
+// 4) El número del admin NUNCA es cliente: su mensaje lo atiende el asistente interno (sin errores) y recibe respuesta
+modeloVacio = false
+r = await enviar('hola', 'wa1', '573000000000')
+assert.equal(r.status, 200)
+assert.ok(r.textos.length >= 1, `el asistente del admin no respondió: ${JSON.stringify(r.textos)}`)
+assert.ok(!r.textos.some((t) => t.includes('Ups') || t.includes('No pude') || t.includes('Dame un momento')), `el asistente del admin falló: ${JSON.stringify(r.textos)}`)
+assert.ok(!calls.some(([t, k, a]) => t === 'conversaciones' && k === 'upsert' && a.includes('573000000000') && a.includes('esperando')), 'el admin entró al flujo de clientes')
 console.log('✅ Pruebas de humo del bot: OK')
