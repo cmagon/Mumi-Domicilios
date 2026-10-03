@@ -1,3 +1,4 @@
+import { avisoLocal } from '../notificaciones'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../supabase'
 import { cop } from '../hooks'
@@ -49,8 +50,7 @@ export default function Pedidos() {
         load()
         setNuevos((s) => new Set(s).add(String(p.new.id)))
         setTimeout(() => setNuevos((s) => { const n = new Set(s); n.delete(String(p.new.id)); return n }), 8000)
-        if ('Notification' in window && Notification.permission === 'granted')
-          new Notification('Nuevo pedido Mumi', { body: `#${p.new.numero} · ${p.new.cliente_nombre}` })
+        void avisoLocal('Nuevo pedido Mumi', `#${p.new.numero} · ${p.new.cliente_nombre}`)
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pedidos' }, () => load())
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pedidos' }, () => load())
