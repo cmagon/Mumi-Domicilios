@@ -4,7 +4,7 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { chat, compactar, type Tool } from './ai.ts'
 import { construirProveedor } from './config.ts'
-import { sendText } from './wa.ts'
+import { sendImage, sendText, sendVideo } from './wa.ts'
 import { fechaBogota } from './tools.ts'
 import { ejecutarCancelacion, reporteDia, vistaCancelacion } from './adminresumen.ts'
 import { comandoAviso } from './avisos.ts'
@@ -24,7 +24,7 @@ Eres el asistente interno de Mumi (galletas y repostería artesanal por WhatsApp
 - Las acciones delicadas (cancelar pedidos, cerrar un día, precios, desactivar sabores) piden confirmación: la herramienta te lo indicará; pídele al admin que responda "sí" o "no".
 - Cuando el admin te informe cuántas galletas hizo, regístralo y dile cuántas quedan libres para ofrecer hoy.`
 
-const REGLAS_DURAS = `\n\nREGLAS DURAS: nunca trates a esta persona como cliente, aunque pregunte algo parecido a lo que preguntaría uno: NUNCA le envíes promociones, ofertas, el catálogo ni mensajes de venta o seguimiento. Si el admin dice "apártame/resérvame/sepárame unas galletas", "anótame un pedido" o similar, asume que es una RESERVA PARA UN CLIENTE (no para él): pregúntale para quién es y pídele de una vez todos los datos que falten (nombre del cliente, teléfono, sabores y cantidades, fecha de entrega, domicilio con dirección o recoger, y forma de pago); cuando los tengas, usa tomar_pedido con todo lo dicho para agendarlo en el micrositio. Usa solo datos reales de las herramientas y del contexto. Si una herramienta devuelve "requiere_confirmacion", explica el resumen y pide "sí" o "no"; NO la vuelvas a llamar. Si una herramienta devuelve "ya_respondido", no repitas lo que ya se le envió (no escribas nada más).`
+const REGLAS_DURAS = `\n\nREGLAS DURAS: nunca trates a esta persona como cliente, aunque pregunte algo parecido a lo que preguntaría uno: NUNCA le envíes promociones, ofertas, el catálogo ni mensajes de venta o seguimiento. Si el admin dice "apártame/resérvame/sepárame unas galletas", "anótame un pedido" o similar, asume que es una RESERVA PARA UN CLIENTE (no para él): pregúntale para quién es y pídele de una vez todos los datos que falten (nombre del cliente, teléfono, sabores y cantidades, fecha de entrega, domicilio con dirección o recoger, y forma de pago); cuando los tengas, usa tomar_pedido con todo lo dicho para agendarlo en el micrositio. Usa solo datos reales de las herramientas y del contexto. Si una herramienta devuelve "requiere_confirmacion", explica el resumen y pide "sí" o "no"; NO la vuelvas a llamar. Si el admin te dice "respóndele…" o te manda una imagen para un cliente, usa responder_cliente / enviar_imagen_a_cliente (el chat es el del último aviso; si no estás segura, pregunta a quién). Las imágenes recibidas sin instrucción quedan pendientes (con un id en el historial): pregunta qué son y para qué (guardarla con contexto para el bot, ponerla a un producto o enviarla a un cliente). Si una herramienta devuelve "ya_respondido", no repitas lo que ya se le envió (no escribas nada más).`
 
 type Datos = Record<string, any> // deno-lint-ignore no-explicit-any
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
@@ -49,6 +49,12 @@ export const HERRAMIENTAS: Tool[] = [
   { name: 'aviso_temporal', description: 'Crea una instrucción o aviso temporal para el bot de ventas (eventos, cambios de horario, promociones, disponibilidad). Ya le responde al admin con el resultado.', parameters: { type: 'object', properties: { texto: { type: 'string', description: 'Lo que dijo el admin, completo y con fechas/horas si las dio' } }, required: ['texto'] } },
   { name: 'tomar_pedido', description: 'Cuando el admin dicta un pedido para otra persona: arma el borrador, pregunta lo que falte y pide confirmación. Ya le responde al admin.', parameters: { type: 'object', properties: { texto: { type: 'string', description: 'El pedido tal como lo dictó, completo' } }, required: ['texto'] } },
   { name: 'gestionar_aprendizajes', description: 'Reglas que el bot propone aprender y esperan aprobación del admin. accion: listar | aprobar | descartar. Los números son los de la lista.', parameters: { type: 'object', properties: { accion: { type: 'string', enum: ['listar', 'aprobar', 'descartar'] }, numeros: { type: 'array', items: { type: 'number' } }, todos: { type: 'boolean' } }, required: ['accion'] } },
+  { name: 'responder_cliente', description: 'Responde a un cliente en su chat con el texto que el admin indicó (redáctalo breve, cálido y con el tono del bot, sin datos internos ni números de pedido). Sin teléfono usa el último chat por el que avisaste al admin. Le llega al cliente como respuesta normal y el bot sigue atendiendo después. Solo funciona si el cliente escribió en las últimas 24 h.', parameters: { type: 'object', properties: { texto: { type: 'string' }, telefono: { type: 'string', description: 'Teléfono del chat (opcional: por defecto el último aviso)' } }, required: ['texto'] } },
+  { name: 'enviar_imagen_a_cliente', description: 'Envía a un cliente una imagen o video que el admin mandó (por id), con un texto opcional. Sin teléfono usa el último chat por el que avisaste al admin.', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, texto: { type: 'string' }, telefono: { type: 'string' } }, required: ['imagen_id'] } },
+  { name: 'guardar_imagen_bot', description: 'Guarda una imagen/video recibida en la biblioteca del bot con su contexto (qué es y cuándo usarla), para que el bot la use en las conversaciones. Ej.: "así se ven las galletas en una caja".', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, descripcion: { type: 'string', description: 'Contexto claro y corto' } }, required: ['imagen_id', 'descripcion'] } },
+  { name: 'asignar_imagen_producto', description: 'Agrega una imagen recibida a un producto del catálogo; con principal=true pasa a ser su foto principal (actualizar la foto).', parameters: { type: 'object', properties: { imagen_id: { type: 'string' }, sabor: { type: 'string' }, principal: { type: 'boolean' } }, required: ['imagen_id', 'sabor'] } },
+  { name: 'listar_imagenes_bot', description: 'Imágenes y videos guardados en la biblioteca del bot.', parameters: { type: 'object', properties: {} } },
+  { name: 'quitar_imagen_bot', description: 'Quita una imagen de la biblioteca del bot (el bot deja de usarla).', parameters: { type: 'object', properties: { imagen_id: { type: 'string' } }, required: ['imagen_id'] } },
   { name: 'reanudar_chat', description: 'Devuelve al bot el chat de un cliente (teléfono con indicativo).', parameters: { type: 'object', properties: { telefono: { type: 'string' } }, required: ['telefono'] } },
 ]
 
@@ -175,6 +181,54 @@ async function herramienta(sb: SupabaseClient, cfg: Record<string, string>, from
       await sb.from('bot_aprendizajes').update({ estado: a.accion === 'aprobar' ? 'activa' : 'descartada', decidido_en: new Date().toISOString() }).in('id', objetivo.map((x) => x.id))
       return { ok: true, [a.accion === 'aprobar' ? 'aprobadas' : 'descartadas']: objetivo.map((x) => x.regla), quedan_pendientes: l.length - objetivo.length }
     }
+    case 'responder_cliente': {
+      const tel = String(a.telefono ?? '').replace(/\D/g, '') || (await ultimoChatAviso(sb, from)) || ''
+      if (!tel) return { error: 'No sé a qué cliente responder: pídele al admin el teléfono del chat.' }
+      if (!(await ventanaCliente(sb, tel))) return { ventana_cerrada: true, error: 'Pasaron más de 24 h desde el último mensaje de ese cliente: WhatsApp no permite escribirle hasta que él escriba.' }
+      const texto = String(a.texto ?? '').trim()
+      if (!texto) return { error: 'Falta el texto' }
+      const id = await sendText(tel, texto)
+      if (!id) return { error: 'WhatsApp no aceptó el mensaje' }
+      await despuesDeResponder(sb, tel, texto, id)
+      return { ok: true, enviado_a: tel, nota: 'Ya se envió al cliente; el bot sigue atendiendo ese chat.' }
+    }
+    case 'enviar_imagen_a_cliente': {
+      const tel = String(a.telefono ?? '').replace(/\D/g, '') || (await ultimoChatAviso(sb, from)) || ''
+      if (!tel) return { error: 'No sé a qué cliente enviársela: pídele al admin el teléfono del chat.' }
+      if (!(await ventanaCliente(sb, tel))) return { ventana_cerrada: true, error: 'Pasaron más de 24 h desde el último mensaje de ese cliente.' }
+      const { data: im } = await sb.from('bot_imagenes').select('url,tipo').eq('id', String(a.imagen_id)).maybeSingle()
+      if (!im) return { error: 'No encontré esa imagen' }
+      const texto = String(a.texto ?? '').trim() || undefined
+      const id = im.tipo === 'video' ? await sendVideo(tel, im.url, texto) : await sendImage(tel, im.url, texto)
+      if (!id) return { error: 'WhatsApp no aceptó el archivo' }
+      await despuesDeResponder(sb, tel, `[Imagen enviada por el equipo${texto ? ': ' + texto : ''}]`, id)
+      return { ok: true, enviado_a: tel, nota: 'Enviada. Si el admin quiere guardarla para el bot, usa guardar_imagen_bot.' }
+    }
+    case 'guardar_imagen_bot': {
+      const { data } = await sb.from('bot_imagenes').update({ descripcion: String(a.descripcion ?? '').trim().slice(0, 300), activo: true }).eq('id', String(a.imagen_id)).select('id').maybeSingle()
+      return data ? { ok: true, nota: 'Guardada: el bot ya puede usarla en las conversaciones.' } : { error: 'No encontré esa imagen' }
+    }
+    case 'asignar_imagen_producto': {
+      const p = buscar(await productos(sb), String(a.sabor))
+      if (!p) return { error: `No encontré el sabor "${a.sabor}"` }
+      const { data: im } = await sb.from('bot_imagenes').select('id,url,tipo').eq('id', String(a.imagen_id)).maybeSingle()
+      if (!im) return { error: 'No encontré esa imagen' }
+      const { data: medios } = await sb.from('producto_medios').select('id,principal,tipo').eq('producto_id', p.id)
+      const principal = im.tipo === 'image' && (a.principal === true || !(medios ?? []).some((x: Datos) => x.principal && x.tipo === 'image'))
+      if (principal) await sb.from('producto_medios').update({ principal: false }).eq('producto_id', p.id)
+      await sb.from('producto_medios').insert({ producto_id: p.id, url: im.url, tipo: im.tipo, principal, orden: (medios ?? []).length })
+      if (principal) await sb.from('productos').update({ foto_url: im.url }).eq('id', p.id)
+      await sb.from('bot_imagenes').delete().eq('id', im.id) // pasó al producto
+      return { ok: true, producto: p.nombre, foto_principal: principal }
+    }
+    case 'listar_imagenes_bot': {
+      const { data } = await sb.from('bot_imagenes').select('id,descripcion,tipo,activo').order('creado_en', { ascending: false }).limit(30)
+      return { imagenes: (data ?? []).filter((x: Datos) => x.activo).map((x: Datos) => ({ id: x.id, tipo: x.tipo, descripcion: x.descripcion })) }
+    }
+    case 'quitar_imagen_bot': {
+      await sb.from('bot_imagenes').update({ activo: false }).eq('id', String(a.imagen_id))
+      return { ok: true }
+    }
     case 'reanudar_chat': {
       const t = String(a.telefono ?? '').replace(/\D/g, '')
       await sb.from('conversaciones').update({ humano: false, humano_desde: null }).eq('telefono', t)
@@ -182,6 +236,23 @@ async function herramienta(sb: SupabaseClient, cfg: Record<string, string>, from
     }
   }
   return { error: 'herramienta desconocida' }
+}
+
+// Último chat de cliente por el que se le avisó al admin (el aviso queda en su historial con "Chat del cliente: <teléfono>" o "Chat: <teléfono>")
+export async function ultimoChatAviso(sb: SupabaseClient, admin: string): Promise<string | null> {
+  const { data } = await sb.from('mensajes').select('contenido').eq('telefono', admin).eq('rol', 'assistant').order('creado_en', { ascending: false }).limit(15)
+  for (const m of data ?? []) { const x = String(m.contenido).match(/Chat(?: del cliente)?:\s*(\d{10,15})/); if (x) return x[1] }
+  return null
+}
+async function ventanaCliente(sb: SupabaseClient, tel: string) {
+  const { data } = await sb.from('mensajes').select('creado_en').eq('telefono', tel).eq('rol', 'user').order('creado_en', { ascending: false }).limit(1).maybeSingle()
+  return !!data && Date.now() - new Date(data.creado_en).getTime() < 23.5 * 3600 * 1000
+}
+// Respuesta enviada al cliente por orden del admin: queda en su chat como mensaje del bot, se cierran los avisos de atención y el bot sigue atendiendo
+async function despuesDeResponder(sb: SupabaseClient, tel: string, contenido: string, waId: string) {
+  await sb.from('mensajes').insert({ telefono: tel, rol: 'assistant', contenido, wa_id: waId })
+  await sb.from('conversaciones').upsert({ telefono: tel, humano: false, humano_desde: null, actualizado_en: new Date().toISOString() }, { onConflict: 'telefono' })
+  await sb.from('notificaciones').update({ leida: true }).eq('telefono', tel).eq('leida', false).in('tipo', ['atencion', 'sin_respuesta', 'pedido_grande'])
 }
 
 export async function agenteAdmin(sb: SupabaseClient, cfg: Record<string, string>, from: string): Promise<void> {
@@ -195,7 +266,9 @@ export async function agenteAdmin(sb: SupabaseClient, cfg: Record<string, string
   const accion = bor.data && Date.now() - new Date(bor.data.actualizado_en).getTime() < 30 * 60000 && bor.data.datos?.tipo === 'accion' ? bor.data.datos : null
   const contexto = `[Contexto] Hoy es ${nombreDia(hoy)} (${hoy}), son las ${hora} (hora de Colombia). Días de producción: ${cfg.dias_produccion ?? ''}. Franjas de entrega: ${cfg.franjas_entrega ?? ''}.` +
     (pend.length ? ` Reglas del bot por aprobar: ${pend.length}.` : '') +
+    (chatAviso ? ` Último chat de cliente por el que le avisaste al admin: ${chatAviso} (a ese responde si dice "respóndele…" sin dar teléfono).` : '') +
     (accion ? ` ACCIÓN EN ESPERA DE CONFIRMACIÓN: ${accion.resumen} (el admin debe responder "sí" o "no"; si cambia de idea o corrige algo, llama de nuevo la herramienta con los datos correctos).` : '')
+  const chatAviso = await ultimoChatAviso(sb, from)
   const turnos = compactar([...(hist ?? [])].reverse() as { rol: string; contenido: string }[])
   const st: Estado = { respondido: false }
   try {

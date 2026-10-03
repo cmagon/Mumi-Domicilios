@@ -1,6 +1,7 @@
 // Fotos y videos enviados por un administrador: "foto: <sabor>" agrega al sabor existente; "nuevo: Nombre, precio, descripción" crea un sabor (oculto hasta que lo actives).
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 import { downloadMedia, sendText } from './wa.ts'
+import { agenteAdmin } from './adminagente.ts'
 
 const sinAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 
@@ -8,7 +9,27 @@ export async function mediaAdmin(sb: SupabaseClient, msg: any, from: string): Pr
   const m = msg.type === 'image' ? msg.image : msg.type === 'video' ? msg.video : msg.type === 'document' ? msg.document : null
   if (!m?.id) return false
   const cap = String(m.caption ?? '').trim().match(/^(foto|imagen|video|nuevo(?:\s+producto|\s+sabor)?)\s*:\s*([\s\S]+)$/i)
-  if (!cap) { await sendText(from, 'Recibí tu archivo, pero no sé qué hacer con él 🙂 Envíalo con el pie "foto: Cacao" (agrega al sabor) o "nuevo: Nombre, precio, descripción" (crea un sabor).'); return true }
+  if (!cap) {
+    // Sin prefijo: se guarda como material pendiente y el asistente decide con lo que dijo el admin (guardarlo con contexto, ponerlo a un producto o enviárselo a un cliente)
+    try {
+      const { bytes, mime } = await downloadMedia(m.id)
+      const video = mime.startsWith('video/')
+      if (!video && !mime.startsWith('image/')) { await sendText(from, 'Solo puedo guardar imágenes o videos MP4 🙏'); return true }
+      if (video && (bytes.length > 16 * 1024 * 1024 || !/mp4|3gpp/.test(mime))) { await sendText(from, 'Los videos deben ser MP4 de máximo 16 MB para poder enviarlos por WhatsApp.'); return true }
+      const ext = (mime.split('/')[1] ?? 'jpg').split(';')[0].replace('jpeg', 'jpg')
+      const path = `biblioteca/${Date.now()}.${ext}`
+      const { error: eu } = await sb.storage.from('catalogo').upload(path, bytes, { contentType: mime })
+      if (eu) { await sendText(from, `No pude guardar el archivo: ${eu.message}`); return true }
+      const url = sb.storage.from('catalogo').getPublicUrl(path).data.publicUrl
+      const pie = String(m.caption ?? '').trim()
+      const { data: img, error } = await sb.from('bot_imagenes').insert({ descripcion: pie, url, tipo: video ? 'video' : 'image', activo: false }).select('id').single()
+      if (error || !img) { await sendText(from, 'No pude guardar el archivo (¿corriste la migración 0046?).'); return true }
+      await sb.from('mensajes').update({ contenido: `[El admin envió ${video ? 'un video' : 'una imagen'} (id ${img.id})${pie ? ` con el pie: «${pie}»` : ' sin pie'}. Aún no está guardada: decide qué hacer con lo que diga, o pregúntale qué es y qué quiere hacer]` }).eq('wa_id', msg.id)
+      const { data: cfgRows } = await sb.from('config').select('clave,valor')
+      await agenteAdmin(sb, Object.fromEntries((cfgRows ?? []).map((r) => [r.clave, r.valor])) as Record<string, string>, from)
+    } catch (e) { console.error('mediaAdmin biblioteca', e); await sendText(from, 'No pude procesar el archivo 🙈 ¿lo intentas de nuevo?') }
+    return true
+  }
   const modo = /^nuevo/i.test(cap[1]) ? 'nuevo' : 'foto'
   const dato = cap[2].trim()
   try {

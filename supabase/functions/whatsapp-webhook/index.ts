@@ -116,7 +116,7 @@ async function manejar(msg: any, nombreWA?: string) {
 
   // Un administrador envía una foto/video con "foto: <sabor>" o "nuevo: Nombre, precio, descripción": va al catálogo
   if (admins.includes(from) && ['image', 'video', 'document'].includes(msg.type) && (await mediaAdmin(sb, msg, from))) {
-    await sb.from('mensajes').update({ contenido: '[El administrador envió un archivo al catálogo]' }).eq('wa_id', msg.id)
+    await sb.from('mensajes').update({ contenido: '[El administrador envió un archivo al catálogo]' }).eq('wa_id', msg.id).eq('contenido', '…')
     return
   }
 
@@ -225,6 +225,13 @@ async function contextoOfertas(): Promise<string> {
     `Cuando el cliente pregunte por ofertas, promociones, combos o descuentos, cuéntaselas (usa consultar_ofertas para el detalle). El saludo inicial va solo (sin ofertas). Busca VARIAS maneras naturales de ofrecerlas, cada una en una frase corta y sin repetir las mismas palabras: (1) al darle información de un producto, sabores, disponibilidad o precios, menciona de paso la promo que aplique; (2) cuando elija cantidad o sabores, compara: si lo que lleva se parece a un combo o con poco más le sale uno, dile cuánto se ahorra ("con 1 más te sale el combo X y ahorras $…"); (3) si duda por el precio o pregunta si hay descuento, ofrécele la oferta; (4) antes de confirmar el pedido, si su pedido encaja en un combo más barato, sugiérele cambiarlo; (5) si pregunta por ofertas, detállalas. Nunca la ofrezcas dos veces con el mismo enfoque en la misma conversación, y si el cliente la rechaza claramente, deja de ofrecerla. Para venderlas usa crear_pedido con combos.`
 }
 
+// Material con contexto que el equipo guardó (cómo se ven las galletas en caja, etc.): el bot puede ofrecerlo o enviarlo cuando ayude
+async function contextoImagenes(): Promise<string> {
+  const { data, error } = await sb.from('bot_imagenes').select('id,descripcion,tipo').eq('activo', true).neq('descripcion', '').order('creado_en', { ascending: false }).limit(15)
+  if (error || !data?.length) return ''
+  return `\n\n[Imágenes del negocio disponibles] ${data.map((x: any) => `(${x.id}) ${x.descripcion}`).join(' · ')}. Si ayuda a la conversación (p. ej. el cliente pregunta cómo se ven, cómo vienen en la caja, la presentación), ofrécelas o envíalas con imagenes_del_negocio (enviar_ids) y [[FOTOS]]; no las envíes sin que tengan relación con lo que pregunta.`
+}
+
 async function responder(p: { from: string; msgId: string; texto: string; cfg: Record<string, string>; ultimoComprobante?: string | null; nombreWA?: string; retomado?: boolean; agrupar: boolean }) {
   const { from, texto, cfg, nombreWA } = p
   const msg = { id: p.msgId }
@@ -286,7 +293,7 @@ async function responder(p: { from: string; msgId: string; texto: string; cfg: R
     `Días de producción: ${cfg.dias_produccion}.${calEspecial}${(cfg.barrios_sin_domicilio ?? '').trim() ? ` NO hacemos domicilio en: ${cfg.barrios_sin_domicilio}.` : ''} Franjas de entrega: ${franjasHabladas(cfg.franjas_entrega ?? '')}. Teléfono del chat: ${from}. ` +
     (nombreWA ? `Nombre en su WhatsApp: ${nombreWA}. ` : '') +
     (p.retomado ? 'NOTA: una persona del equipo estaba atendiendo este chat pero no alcanzó a responder a tiempo; retoma tú la conversación con naturalidad (puedes pedir una breve disculpa por la espera) sin mencionar sistemas internos. ' : '') +
-    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => '')) + (await contextoOfertas().catch(() => ''))
+    (cfg.numero_atencion ? `Número de atención personalizada: ${cfg.numero_atencion}.` : 'No hay número de atención personalizada configurado: no des ninguno.') + resumenPedido + (memoria ? `\n\n${memoria}` : '') + (await contextoAvisos(sb).catch(() => '')) + (await contextoOfertas().catch(() => '')) + (await contextoImagenes().catch(() => ''))
   const ctx: Ctx = { sb, cfg, telefono: from, prov, sesionInicio, comprobantePath: comprobantePath ?? conv?.ultimo_comprobante }
 
   const FALLBACK = 'Dame un momento, en seguida te ayudo 🙏'
